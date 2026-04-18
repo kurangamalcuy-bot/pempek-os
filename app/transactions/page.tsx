@@ -13,17 +13,17 @@ export default function TransactionsPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('628');
   const [qty, setQty] = useState('');
-  const [price, setPrice] = useState('20000');
+  const [priceOption, setPriceOption] = useState('20000'); // Opsi dropdown
+  const [customPrice, setCustomPrice] = useState(''); // State khusus harga manual
   const [type, setType] = useState('offline');
   const [batchId, setBatchId] = useState('');
 
   useEffect(() => {
-    // Ambil data batch yang masih aktif/ada stok
     const fetchBatches = async () => {
       const { data } = await supabase.from('batches').select('*').neq('status', 'Sold Out').order('arrival_date', { ascending: false });
       if (data && data.length > 0) {
         setBatches(data);
-        setBatchId(data[0].id); // Set default ke batch terbaru
+        setBatchId(data[0].id);
       }
     };
     fetchBatches();
@@ -33,12 +33,15 @@ export default function TransactionsPage() {
     e.preventDefault();
     setLoading(true);
 
+    // Tentukan harga final: jika pilih manual, ambil dari customPrice, jika tidak, ambil dari dropdown
+    const finalPrice = priceOption === 'custom' ? parseInt(customPrice) : parseInt(priceOption);
+
     const { error } = await supabase.from('transactions').insert([
       {
         customer_name: name,
         customer_phone: phone,
         qty: parseInt(qty),
-        selling_price: parseInt(price),
+        selling_price: finalPrice,
         type: type,
         batch_id: batchId || null
       }
@@ -50,7 +53,7 @@ export default function TransactionsPage() {
       alert('Gagal menyimpan: ' + error.message);
     } else {
       setSuccess(true);
-      setName(''); setPhone('628'); setQty('');
+      setName(''); setPhone('628'); setQty(''); setCustomPrice('');
       setTimeout(() => setSuccess(false), 3000);
     }
   };
@@ -88,12 +91,21 @@ export default function TransactionsPage() {
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Harga Satuan</label>
-              <select value={price} onChange={(e) => setPrice(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none">
+              <select value={priceOption} onChange={(e) => setPriceOption(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none">
                 <option value="20000">Rp 20.000 (Offline)</option>
                 <option value="25000">Rp 25.000 (Online)</option>
+                <option value="custom">Input Manual...</option>
               </select>
             </div>
           </div>
+          
+          {/* Form khusus akan muncul kalau pilih "Input Manual" */}
+          {priceOption === 'custom' && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <label className="block text-sm font-bold text-emerald-700 mb-1">Nominal Harga Manual (Rp)</label>
+              <input type="number" required min="1" value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} placeholder="Cth: 18000" className="w-full p-3 border-2 border-emerald-200 rounded-xl bg-emerald-50 focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-1">Sumber Stok (Batch)</label>

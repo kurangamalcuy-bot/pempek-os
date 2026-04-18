@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { TrendingUp, Package, Activity, Truck, MessageCircle } from 'lucide-react';
+import { TrendingUp, Package, Activity, MessageCircle, Trash2 } from 'lucide-react';
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -10,7 +10,6 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Mengambil SEMUA data dari Supabase saat aplikasi dibuka
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -32,33 +31,36 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  // ==========================================
-  // KALKULASI KEUANGAN OTOMATIS
-  // ==========================================
-  // 1. Hitung Pengeluaran (CAPEX = Modal Alat, OPEX = Operasional)
-  const capex = expenses.filter(e => e.category === 'capex').reduce((acc, curr) => acc + Number(curr.amount), 0) || 1; // || 1 menghindari pembagian dengan 0
-  const opex = expenses.filter(e => e.category === 'operational' || e.category === 'ads').reduce((acc, curr) => acc + Number(curr.amount), 0);
+  // FITUR HAPUS TRANSAKSI
+  const handleDelete = async (id: number) => {
+    // Munculkan peringatan dulu sebelum beneran dihapus
+    if (window.confirm("Yakin ingin menghapus penjualan ini? Data BEP & Omzet akan otomatis dipotong.")) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      
+      if (!error) {
+        // Hapus data dari layar tanpa perlu refresh web
+        setTransactions(transactions.filter(trx => trx.id !== id));
+      } else {
+        alert("Gagal menghapus: " + error.message);
+      }
+    }
+  };
 
-  // 2. Hitung Penjualan
+  const capex = expenses.filter(e => e.category === 'capex').reduce((acc, curr) => acc + Number(curr.amount), 0) || 1;
+  const opex = expenses.filter(e => e.category === 'operational' || e.category === 'ads').reduce((acc, curr) => acc + Number(curr.amount), 0);
   const totalPackagesSold = transactions.reduce((acc, curr) => acc + Number(curr.qty), 0);
   const totalRevenue = transactions.reduce((acc, curr) => acc + (Number(curr.qty) * Number(curr.selling_price)), 0);
-  
-  // 3. Hitung COGS (Harga Pokok Penjualan)
-  // Untuk simpelnya, kita ambil rata-rata modal base_cost_per_qty dari batch terbaru
   const baseCost = batches.length > 0 ? Number(batches[0].base_cost_per_qty) : 15000;
   const totalCOGS = totalPackagesSold * baseCost;
 
-  // 4. Hitung Keuntungan Bersih & BEP
   const netProfit = totalRevenue - totalCOGS - opex;
   const bepPercentage = Math.max(0, Math.min(100, (netProfit / capex) * 100));
   const remainingCapex = Math.max(0, capex - netProfit);
 
-  // Fungsi Format Rupiah
   const formatIDR = (num: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
   };
 
-  // Fungsi WhatsApp
   const sendWhatsApp = (trx: any) => {
     const text = `Halo Kak ${trx.customer_name}! Ini rekap pesanan Pempek Frozen Bengkulu-nya ya:\n\nJumlah: ${trx.qty} Paket\nTotal: ${formatIDR(trx.qty * trx.selling_price)}\n\nTerima kasih banyak, ditunggu repeat ordernya! 🥟`;
     const encodedText = encodeURIComponent(text);
@@ -69,7 +71,6 @@ export default function Dashboard() {
 
   return (
     <div className="font-sans">
-      {/* Header Hijau */}
       <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -81,7 +82,6 @@ export default function Dashboard() {
           </div>
         </div>
         
-        {/* Kartu Profit Utama */}
         <div className="bg-white/10 p-4 rounded-2xl border border-white/20 backdrop-blur-sm">
           <p className="text-emerald-50 text-sm mb-1">Net Profit (Live)</p>
           <h2 className="text-3xl font-extrabold">{formatIDR(netProfit)}</h2>
@@ -94,7 +94,6 @@ export default function Dashboard() {
 
       <main className="p-5 space-y-6">
         
-        {/* BEP Tracker */}
         <section>
           <div className="flex justify-between items-end mb-2">
             <h3 className="font-bold text-slate-700">BEP Tracker (Balik Modal Alat)</h3>
@@ -111,7 +110,6 @@ export default function Dashboard() {
           </p>
         </section>
 
-        {/* Metrik Cepat */}
         <section className="grid grid-cols-2 gap-3">
           <div className="bg-white border border-slate-100 shadow-sm p-4 rounded-2xl">
             <div className="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center mb-2">
@@ -131,7 +129,6 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Penjualan Terakhir */}
         <section>
           <h3 className="font-bold text-slate-700 mb-3">5 Penjualan Terakhir</h3>
           <div className="space-y-3">
@@ -144,15 +141,25 @@ export default function Dashboard() {
                   </div>
                   <p className="text-sm font-bold text-emerald-600">{formatIDR(trx.qty * trx.selling_price)}</p>
                 </div>
-                <div className="pt-2 border-t border-slate-50 flex justify-end">
+                
+                {/* Tombol Hapus dan WA sekarang bersebelahan */}
+                <div className="pt-2 border-t border-slate-50 flex justify-between items-center">
+                  <button 
+                    onClick={() => handleDelete(trx.id)}
+                    className="flex items-center space-x-1 text-xs bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition-colors font-semibold"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Batal</span>
+                  </button>
                   <button 
                     onClick={() => sendWhatsApp(trx)}
                     className="flex items-center space-x-1 text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors font-semibold"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Kirim WA Invoice</span>
+                    <span>Kirim WA</span>
                   </button>
                 </div>
+
               </div>
             ))}
             {transactions.length === 0 && (
