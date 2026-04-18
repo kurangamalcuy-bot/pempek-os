@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { TrendingUp, Package, Activity, MessageCircle, Trash2, Printer, Megaphone, AlertCircle } from 'lucide-react';
+import { Activity, Trash2, Printer, Megaphone, Calendar, BarChart3, TrendingUp, Package } from 'lucide-react';
+import Link from 'next/link';
+import toast from 'react-hot-toast';
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function Dashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -18,7 +22,6 @@ export default function Dashboard() {
           supabase.from('batches').select('*').order('arrival_date', { ascending: false }),
           supabase.from('expenses').select('*')
         ]);
-
         if (trxRes.data) setTransactions(trxRes.data);
         if (batchRes.data) setBatches(batchRes.data);
         if (expRes.data) setExpenses(expRes.data);
@@ -31,108 +34,163 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
+
+  // --- LOGIKA STOK MULTI-PRODUK (OTOMATIS) ---
+  const stockMap: Record<string, { in: number, out: number }> = {};
+  
+  // 1. Kumpulkan semua stok masuk berdasarkan nama produk
+  batches.forEach(b => {
+    const name = b.product_name || 'Pempek Campur';
+    if (!stockMap[name]) stockMap[name] = { in: 0, out: 0 };
+    if (b.status !== 'Sold Out') stockMap[name].in += b.total_qty;
+  });
+
+  // 2. Kurangi dengan stok yang terjual berdasarkan nama produk
+  transactions.forEach(t => {
+    const name = t.product_name || 'Pempek Campur';
+    if (!stockMap[name]) stockMap[name] = { in: 0, out: 0 };
+    stockMap[name].out += t.qty;
+  });
+
+  // 3. Ubah jadi list array untuk ditampilkan
+  const currentStocks = Object.keys(stockMap).map(name => ({
+    name,
+    qty: stockMap[name].in - stockMap[name].out
+  }));
+
+
+  // --- LOGIKA KEUANGAN (SAMA SEPERTI SEBELUMNYA) ---
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  const trxToday = transactions.filter(t => new Date(t.created_at).toLocaleDateString('en-CA') === todayStr);
+  const expToday = expenses.filter(e => new Date(e.created_at).toLocaleDateString('en-CA') === todayStr && e.category !== 'capex');
+  const revToday = trxToday.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
+  const qtyToday = trxToday.reduce((acc, curr) => acc + curr.qty, 0);
+  const opexToday = expToday.reduce((acc, curr) => acc + curr.amount, 0);
+  const profitToday = revToday - opexToday; // Simple gross profit harian
+
+  const trxThisMonth = transactions.filter(t => new Date(t.created_at).getMonth() === currentMonth && new Date(t.created_at).getFullYear() === currentYear);
+  const revThisMonth = trxThisMonth.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
+
+  const adsExpensesThisMonth = expenses.filter(e => new Date(e.created_at).getMonth() === currentMonth && new Date(e.created_at).getFullYear() === currentYear && e.category === 'ads').reduce((acc, curr) => acc + curr.amount, 0);
+  const qtyFromMetaAdsThisMonth = trxThisMonth.filter(t => t.type === 'meta_ads').reduce((acc, curr) => acc + curr.qty, 0);
+  const cacMetaAds = qtyFromMetaAdsThisMonth > 0 ? (adsExpensesThisMonth / qtyFromMetaAdsThisMonth) : 0;
+
   const handleDelete = async (id: number) => {
-    if (window.confirm("Yakin ingin menghapus penjualan ini?")) {
+    if (window.confirm("Yakin ingin menghapus transaksi ini?")) {
       const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (!error) setTransactions(transactions.filter(trx => trx.id !== id));
+      if (!error) {
+        setTransactions(transactions.filter(trx => trx.id !== id));
+        toast.success('Data berhasil dihapus');
+      } else {
+        toast.error('Gagal menghapus data');
+      }
     }
   };
 
-  // --- KUMPULAN RUMUS BISNIS ---
-  
-  // 1. Logika Filter Bulan Ini
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
-  const isThisMonth = (dateString: string) => {
-    const d = new Date(dateString);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  // --- KODE BARU: MESIN PEMBUAT PDF ---
+  const generatePDF = (trx: any) => {
+    const doc = new jsPDF({
+      unit: "mm",
+      format: [80, 150] // Ukuran kertas thermal struk
+    });
+
+    // Desain Header Struk
+    doc.setFontSize(14);
+    doc.text("Pempek Umiwa", 40, 15, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("Pusat Pempek Frozen Bengkulu", 40, 20, { align: "center" });
+    doc.text("------------------------------------------", 40, 25, { align: "center" });
+
+    // Detail Transaksi
+    doc.text(`Tgl: ${new Date(trx.created_at).toLocaleDateString()}`, 10, 32);
+    doc.text(`Cust: ${trx.customer_name}`, 10, 37);
+
+    // KODE YANG DIPERBAIKI: Menggunakan autoTable secara langsung
+    autoTable(doc, {
+      startY: 45,
+      margin: { left: 5, right: 5 },
+      head: [['Produk', 'Qty', 'Harga']],
+      body: [[trx.product_name, trx.qty, formatIDR(trx.selling_price)]],
+      theme: 'plain',
+      styles: { fontSize: 7 }
+    });
+
+    // KODE YANG DIPERBAIKI: Mengambil posisi Y terakhir dengan aman
+    const finalY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : 60;
+    
+    doc.setFontSize(10);
+    doc.text(`TOTAL: ${formatIDR(trx.qty * trx.selling_price)}`, 70, finalY, { align: "right" });
+    
+    doc.setFontSize(8);
+    doc.text("Terima kasih sudah memesan!", 40, finalY + 15, { align: "center" });
+    doc.text("IG: @pempek_os", 40, finalY + 20, { align: "center" });
+
+    // Download File
+    doc.save(`Struk_${trx.customer_name}.pdf`);
+    toast.success("Struk berhasil dibuat & didownload!");
   };
+  // --- BATAS KODE BARU ---
 
-  const trxThisMonth = transactions.filter(t => isThisMonth(t.created_at));
-  const expThisMonth = expenses.filter(e => isThisMonth(e.created_at));
-
-  // 2. Sisa Stok Real-time
-  const totalStockIn = batches.filter(b => b.status !== 'Sold Out').reduce((acc, curr) => acc + Number(curr.total_qty), 0);
-  const totalPackagesSold = transactions.reduce((acc, curr) => acc + Number(curr.qty), 0);
-  const currentStock = totalStockIn - totalPackagesSold;
-
-  // 3. Keuangan Lifetime
-  const capex = expenses.filter(e => e.category === 'capex').reduce((acc, curr) => acc + Number(curr.amount), 0) || 1;
-  const opex = expenses.filter(e => e.category === 'operational' || e.category === 'ads').reduce((acc, curr) => acc + Number(curr.amount), 0);
-  const totalRevenue = transactions.reduce((acc, curr) => acc + (Number(curr.qty) * Number(curr.selling_price)), 0);
-  const baseCost = batches.length > 0 ? Number(batches[0].base_cost_per_qty) : 15000;
-  const netProfit = totalRevenue - (totalPackagesSold * baseCost) - opex;
-  const bepPercentage = Math.max(0, Math.min(100, (netProfit / capex) * 100));
-
-  // 4. Keuangan Bulan Ini & CAC
-  const revenueThisMonth = trxThisMonth.reduce((acc, curr) => acc + (Number(curr.qty) * Number(curr.selling_price)), 0);
-  const soldThisMonth = trxThisMonth.reduce((acc, curr) => acc + Number(curr.qty), 0);
-  const adsThisMonth = expThisMonth.filter(e => e.category === 'ads').reduce((acc, curr) => acc + Number(curr.amount), 0);
-  const cacPerPack = soldThisMonth > 0 ? (adsThisMonth / soldThisMonth) : 0; // Biaya Iklan per Pack terjual
-
-  const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
-
-  // 5. Fitur Salin Label Pengiriman
-  const copyLabel = (trx: any) => {
-    const text = `📦 LABEL PENGIRIMAN\n\nPenerima: ${trx.customer_name}\nNo. HP: ${trx.customer_phone}\n\nIsi Paket:\n${trx.qty} Pack Pempek Frozen\n\n-----------------`;
-    navigator.clipboard.writeText(text);
-    alert("Label berhasil disalin! Silakan paste (tempel) di chat kurir.");
-  };
-
-  const sendWhatsApp = (trx: any) => {
-    const text = `Halo Kak ${trx.customer_name}! Ini rekap pesanan Pempek Frozen Bengkulu-nya ya:\nJumlah: ${trx.qty} Paket\nTotal: ${formatIDR(trx.qty * trx.selling_price)}\n\nTerima kasih banyak!`;
-    window.open(`https://wa.me/${trx.customer_phone}?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  if (loading) return <div className="p-10 text-center text-slate-500 font-bold">Memuat Dashboard...</div>;
+  if (loading) return <div className="p-10 text-center text-slate-500 font-bold">Memuat Analitik...</div>;
 
   return (
-    <div className="font-sans pb-10">
+    <div className="font-sans pb-24 bg-slate-50 min-h-screen">
       <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
-        <div className="flex justify-between items-center mb-4">
-          <div><h1 className="text-xl font-bold tracking-tight">Pempek OS v2</h1><p className="text-emerald-100 text-xs">Pusat Komando Bisnis</p></div>
-          <div className="bg-white/20 p-2 rounded-full"><Activity className="w-5 h-5 text-white" /></div>
-        </div>
-        
-        <div className="bg-white/10 p-4 rounded-2xl border border-white/20 backdrop-blur-sm mb-3">
-          <p className="text-emerald-50 text-sm mb-1">Net Profit (All Time)</p>
-          <h2 className="text-3xl font-extrabold">{formatIDR(netProfit)}</h2>
-        </div>
+        <div className="flex justify-between items-center mb-6">
+            <div><h1 className="text-xl font-bold tracking-tight">Pempek OS v2</h1><p className="text-emerald-100 text-xs">Pusat Komando Operasional</p></div>
+            
+            {/* TOMBOL MENUJU HALAMAN ANALITIK */}
+            <Link href="/analytics" className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition shadow-inner flex items-center cursor-pointer z-10">
+              <Activity className="w-5 h-5 text-white mr-2" />
+              <span className="text-xs font-bold text-white pr-1">Buka Analitik</span>
+            </Link>
+          </div>
 
-        {/* STATUS STOK REALTIME */}
-        <div className={`p-3 rounded-xl border flex items-center justify-between ${currentStock < 10 ? 'bg-rose-500 border-rose-400' : 'bg-emerald-700 border-emerald-500'}`}>
-          <div className="flex items-center"><Package className="w-5 h-5 mr-2" /> <span className="font-bold text-sm">Sisa Stok di Freezer</span></div>
-          <span className="text-xl font-bold">{currentStock} <span className="text-xs font-normal">Pack</span></span>
+        {/* TRACKER SISA STOK BERDASARKAN PRODUK */}
+        <h3 className="text-xs font-bold text-emerald-100 mb-2 uppercase tracking-wider">Sisa Stok di Freezer</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {currentStocks.map((stock, idx) => (
+            <div key={idx} className={`p-3 rounded-xl border backdrop-blur-sm ${stock.qty < 5 ? 'bg-rose-500/90 border-rose-400 text-white' : 'bg-white/10 border-white/20 text-white'}`}>
+              <p className="text-[10px] opacity-80 font-bold truncate">{stock.name}</p>
+              <p className="text-xl font-black">{stock.qty} <span className="text-[10px] font-normal opacity-80">Pack</span></p>
+            </div>
+          ))}
+          {currentStocks.length === 0 && <p className="text-xs text-emerald-200">Belum ada data stok.</p>}
         </div>
       </header>
 
-      <main className="p-5 space-y-6">
-        
-        {/* LAPORAN BULAN INI & CAC */}
-        <section className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-          <h3 className="font-bold text-slate-800 mb-3 border-b pb-2">Performa Bulan Ini</h3>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div><p className="text-xs text-slate-500">Omzet Bulan Ini</p><p className="font-bold text-emerald-600 text-lg">{formatIDR(revenueThisMonth)}</p></div>
-            <div><p className="text-xs text-slate-500">Terjual Bulan Ini</p><p className="font-bold text-slate-800 text-lg">{soldThisMonth} Pack</p></div>
+      <main className="p-4 space-y-5 -mt-2">
+        {/* Laba Rugi dan Komponen lainnya tetap sama */}
+        <section className="grid grid-cols-2 gap-3 mt-4">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-2 opacity-10"><Calendar className="w-10 h-10" /></div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Omzet Hari Ini</p>
+            <p className="text-xl font-black text-slate-800">{formatIDR(revToday)}</p>
+            <p className="text-[10px] text-slate-400 mt-1">Terjual: {qtyToday} Pack</p>
           </div>
-          <div className="bg-blue-50 p-3 rounded-xl flex justify-between items-center border border-blue-100">
-            <div className="flex items-center"><Megaphone className="w-5 h-5 text-blue-600 mr-2" /><div><p className="text-xs text-blue-800 font-bold">Biaya Iklan (CAC) / Pack</p></div></div>
-            <p className="font-bold text-blue-800">{formatIDR(cacPerPack)}</p>
-          </div>
-        </section>
-
-        {/* BEP TRACKER LAMA */}
-        <section>
-          <div className="flex justify-between items-end mb-2">
-            <h3 className="font-bold text-slate-700">BEP Tracker Alat</h3>
-            <span className="text-xs font-semibold text-emerald-600">{bepPercentage.toFixed(2)}%</span>
-          </div>
-          <div className="w-full bg-slate-200 h-4 rounded-full overflow-hidden border border-slate-300 shadow-inner">
-            <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${Math.max(2, bepPercentage)}%` }}></div>
+          <div className="bg-emerald-700 p-4 rounded-2xl shadow-md border border-emerald-600 relative overflow-hidden text-white">
+            <div className="absolute top-0 right-0 p-2 opacity-10"><TrendingUp className="w-10 h-10" /></div>
+            <p className="text-[10px] font-bold text-emerald-200 uppercase tracking-wider mb-1">Omzet Bulan Ini</p>
+            <p className="text-xl font-black">{formatIDR(revThisMonth)}</p>
           </div>
         </section>
 
-        {/* LIST TRANSAKSI + PRINT LABEL */}
+        <section className="bg-blue-50 border border-blue-100 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="font-bold text-blue-900 flex items-center mb-1"><Megaphone className="w-4 h-4 mr-2" /> CAC Meta Ads Bulan Ini</h3>
+            </div>
+            <div className="text-right">
+              <p className="text-xl font-black text-blue-700">{formatIDR(cacMetaAds)}</p>
+              <p className="text-[9px] font-bold text-blue-500 uppercase tracking-wider">Per Pack Terjual</p>
+            </div>
+          </div>
+        </section>
+
         <section>
           <h3 className="font-bold text-slate-700 mb-3">Penjualan Terakhir</h3>
           <div className="space-y-3">
@@ -141,29 +199,26 @@ export default function Dashboard() {
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <p className="text-sm font-bold text-slate-800">{trx.customer_name}</p>
-                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{trx.qty} Packs • {trx.type}</p>
+                    <p className="text-[10px] text-slate-500 font-bold mt-1">
+                      {trx.qty}x {trx.product_name}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold text-emerald-600">{formatIDR(trx.qty * trx.selling_price)}</p>
                   </div>
                 </div>
-                
-                <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
-                  <button onClick={() => handleDelete(trx.id)} className="flex items-center justify-center space-x-1 text-[10px] bg-rose-50 text-rose-600 p-2 rounded-lg hover:bg-rose-100 font-bold">
-                    <Trash2 className="w-3.5 h-3.5" /> <span>Batal</span>
+                <div className="flex justify-end space-x-2 border-t border-slate-100 pt-3">
+                   <button onClick={() => handleDelete(trx.id)} className="flex items-center justify-center space-x-1 text-[10px] bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-100 font-bold transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" /> <span>Hapus</span>
                   </button>
-                  <button onClick={() => sendWhatsApp(trx)} className="flex items-center justify-center space-x-1 text-[10px] bg-emerald-50 text-emerald-700 p-2 rounded-lg hover:bg-emerald-100 font-bold">
-                    <MessageCircle className="w-3.5 h-3.5" /> <span>Kirim WA</span>
-                  </button>
-                  <button onClick={() => copyLabel(trx)} className="flex items-center justify-center space-x-1 text-[10px] bg-slate-900 text-white p-2 rounded-lg hover:bg-slate-800 font-bold">
-                    <Printer className="w-3.5 h-3.5" /> <span>Salin Label</span>
+                  <button onClick={() => generatePDF(trx)} className="flex items-center justify-center space-x-1 text-[10px] bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 font-bold transition-colors">
+                    <Printer className="w-3.5 h-3.5" /> <span>Cetak Struk</span>
                   </button>
                 </div>
               </div>
             ))}
           </div>
         </section>
-
       </main>
     </div>
   );
