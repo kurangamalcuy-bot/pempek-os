@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Package, Plus, Trash2, Pencil, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function BatchesPage() {
   const [batches, setBatches] = useState<any[]>([]);
@@ -19,6 +20,7 @@ export default function BatchesPage() {
   const [status, setStatus] = useState('In Freezer');
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     fetchBatches();
@@ -33,43 +35,39 @@ export default function BatchesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true); // Nyalakan loading agar tombol terkunci
     
-    if (editingId) {
-      // PROSES EDIT DATA
-      const { error } = await supabase.from('batches').update({ 
+    // Siapkan data dengan memastikan format angkanya (Number) valid
+    const payload = {
         arrival_date: date, 
         product_name: productName, 
-        total_qty: parseInt(qty), 
-        base_cost_per_qty: parseInt(cost), 
-        status: status 
-      }).eq('id', editingId);
-      
-      if (!error) {
-        alert('Data Stok berhasil diupdate!');
-        resetForm();
-        fetchBatches();
-      } else {
-        alert('Error: ' + error.message);
-      }
-    } else {
-      // PROSES TAMBAH DATA BARU
-      const { error } = await supabase.from('batches').insert([
-        { 
-          arrival_date: date, 
-          product_name: productName, 
-          total_qty: parseInt(qty), 
-          base_cost_per_qty: parseInt(cost), 
-          status: status 
+        total_qty: Number(qty) || 0, 
+        base_cost_per_qty: Number(cost) || 0, 
+        status: status
+    };
+
+    try {
+        if (editingId) {
+            // PROSES EDIT DATA
+            const { error } = await supabase.from('batches').update(payload).eq('id', editingId);
+            
+            if (error) throw error;
+            toast.success('Data Stok berhasil diupdate!');
+        } else {
+            // PROSES TAMBAH DATA BARU
+            const { error } = await supabase.from('batches').insert([payload]);
+            
+            if (error) throw error;
+            toast.success('Stok baru berhasil ditambahkan!');
         }
-      ]);
-      
-      if (!error) {
-        alert('Stok baru berhasil ditambahkan!');
+        
         resetForm();
-        fetchBatches();
-      } else {
-        alert('Error: ' + error.message);
-      }
+        fetchBatches(); // Refresh data instan
+    } catch (error: any) {
+        console.error("Gagal simpan stok:", error);
+        toast.error('Gagal menyimpan! Periksa jaringan atau coba sesaat lagi.');
+    } finally {
+        setIsSubmitting(false); // Matikan loading
     }
   };
 
@@ -83,14 +81,13 @@ export default function BatchesPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll ke atas otomatis
   };
 
+  // FUNGSI HAPUS STOK TANPA POP-UP
   const handleDelete = async (id: number) => {
-    if (window.confirm("Yakin ingin menghapus data stok ini? Sisa stok di Dashboard akan ikut berkurang.")) {
-      const { error } = await supabase.from('batches').delete().eq('id', id);
-      if (!error) {
-        fetchBatches();
-      } else {
-        alert('Gagal menghapus (Mungkin ada transaksi yang nyangkut di stok ini): ' + error.message);
-      }
+    const { error } = await supabase.from('batches').delete().eq('id', id);
+    if (!error) {
+      fetchBatches();
+    } else {
+      alert('Gagal menghapus (Mungkin ada transaksi yang nyangkut di stok ini): ' + error.message);
     }
   };
 
@@ -163,8 +160,12 @@ const filteredBatches = batches.filter(b => {
               </div>
             </div>
             
-            <button type="submit" className={`w-full text-white font-bold p-3 rounded-xl mt-2 transition-colors shadow-md ${editingId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-              {editingId ? 'Update Data Stok' : 'Simpan Batch Stok'}
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className={`w-full text-white font-bold p-3 rounded-xl mt-2 transition-colors shadow-md ${isSubmitting ? 'bg-slate-400 cursor-not-allowed' : (editingId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700')}`}
+            >
+              {isSubmitting ? 'Menyimpan...' : (editingId ? 'Update Data Stok' : 'Simpan Batch Stok')}
             </button>
           </form>
         </section>

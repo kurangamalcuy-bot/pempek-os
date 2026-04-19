@@ -13,13 +13,32 @@ export default function CustomersPage() {
       const { data } = await supabase.from('transactions').select('*');
       if (data) {
         // Logika untuk mengelompokkan pembeli berdasarkan Nomor WA (Repeat Order)
+        // Logika untuk mengelompokkan pembeli berdasarkan Nomor WA atau Nama (Jika WA kosong)
         const grouped = data.reduce((acc, curr) => {
-          if (!acc[curr.customer_phone]) {
-            acc[curr.customer_phone] = { name: curr.customer_name, phone: curr.customer_phone, total_qty: 0, total_spent: 0, order_count: 0 };
+          
+          // 1. Deteksi apakah nomor WA kosong atau cuma diisi '628' bawaan form
+          const phoneStr = curr.customer_phone ? String(curr.customer_phone).trim() : '';
+          const isPhoneEmpty = phoneStr === '' || phoneStr === '628' || phoneStr === '-';
+
+          // 2. Kunci Unik: Pakai Nama kalau nomornya kosong, pakai Nomor kalau ada
+          const uniqueKey = isPhoneEmpty 
+              ? `NAME_${curr.customer_name.trim().toLowerCase()}` 
+              : `PHONE_${phoneStr}`;
+
+          // 3. Masukkan atau gabungkan data pelanggan
+          if (!acc[uniqueKey]) {
+            acc[uniqueKey] = { 
+              name: curr.customer_name, 
+              phone: isPhoneEmpty ? '-' : phoneStr, // Otomatis jadi tanda setrip kalau kosong biar rapi
+              total_qty: 0, 
+              total_spent: 0, 
+              order_count: 0 
+            };
           }
-          acc[curr.customer_phone].total_qty += Number(curr.qty);
-          acc[curr.customer_phone].total_spent += (Number(curr.qty) * Number(curr.selling_price));
-          acc[curr.customer_phone].order_count += 1;
+          acc[uniqueKey].total_qty += Number(curr.qty);
+          acc[uniqueKey].total_spent += (Number(curr.qty) * Number(curr.selling_price));
+          acc[uniqueKey].order_count += 1;
+          
           return acc;
         }, {});
         

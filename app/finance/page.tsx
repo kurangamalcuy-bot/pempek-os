@@ -96,16 +96,14 @@ export default function FinancePage() {
     .filter(e => e.type === 'expense')
     .reduce((acc, curr) => acc + curr.amount, 0);
 
-  // --- FUNGSI HAPUS TRANSAKSI ---
+  // FUNGSI HAPUS ARUS KAS TANPA POP-UP
   const handleDelete = async (id: number) => {
-    if (window.confirm('Yakin ingin menghapus transaksi ini? Data saldo akan otomatis menyesuaikan.')) {
-      const { error } = await supabase.from('expenses').delete().eq('id', id);
-      if (!error) {
-        toast.success('Data berhasil dihapus!');
-        fetchData(); // Refresh data agar daftar dan saldo terupdate
-      } else {
-        toast.error('Gagal menghapus data.');
-      }
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
+    if (!error) {
+      toast.success('Data berhasil dihapus!');
+      fetchData(); 
+    } else {
+      toast.error('Gagal menghapus data.');
     }
   };
 
@@ -114,6 +112,7 @@ export default function FinancePage() {
     // 1. Tarik data dari kartu ke form input di atas
     setEditingId(exp.id);
     setType(exp.type);
+    setCategory(exp.category || 'operational');
     setAccount(exp.account);
     setPaymentStatus(exp.payment_status || 'Lunas');
     setAmount(exp.amount.toString());
@@ -182,7 +181,25 @@ export default function FinancePage() {
                     </select>
                 </div>
             </div>
-            <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Nominal (Rp)" className="w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none" />
+
+            {/* --- FITUR KATEGORI PENGELUARAN --- */}
+            {type === 'expense' && (
+                <div className="animate-in fade-in zoom-in duration-200">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Kategori Pengeluaran</label>
+                    <select 
+                      value={category} 
+                      onChange={(e) => setCategory(e.target.value)} 
+                      className="w-full p-3 border border-slate-200 rounded-xl text-xs outline-none bg-white font-bold text-slate-900 focus:border-rose-400"
+                    >
+                        <option value="operational">🍔 Operasional (Bahan, Ongkir, Gaji)</option>
+                        <option value="marketing">🚀 Marketing & Iklan (Meta/TikTok Ads)</option>
+                        <option value="capex">📦 Capex / Investasi (Alat, Freezer)</option>
+                    </select>
+                </div>
+            )}
+            {/* ------------------------------------ */}
+
+            <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Nominal (Rp)" className="w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none text-slate-900" />
             <input type="text" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Keterangan Transaksi" className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none" />
             <button type="submit" className={`w-full text-white font-bold p-3 rounded-xl shadow-lg transition-transform active:scale-95 ${type === 'income' ? 'bg-emerald-600' : 'bg-slate-900'}`}>
                {editingId ? 'Update Data' : 'Simpan Transaksi'}
@@ -233,7 +250,17 @@ export default function FinancePage() {
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-800">{exp.description}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{exp.account}</p>
+                      <div className="flex items-center space-x-1.5 mt-0.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{exp.account}</p>
+                        {exp.type === 'expense' && (
+                          <>
+                            <span className="text-[10px] text-slate-300">•</span>
+                            <p className="text-[10px] font-black text-indigo-500 uppercase">
+                              {exp.category === 'operational' ? 'Operasional' : exp.category === 'marketing' ? 'Marketing' : exp.category === 'capex' ? 'Capex' : exp.category}
+                            </p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">

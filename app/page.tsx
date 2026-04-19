@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Activity, Trash2, Printer, Megaphone, Calendar, BarChart3, TrendingUp, Package } from 'lucide-react';
+import { Activity, Trash2, Printer, Megaphone, Calendar, BarChart3, TrendingUp, Package, Snowflake, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { jsPDF } from "jspdf";
@@ -31,36 +31,40 @@ export default function Dashboard() {
         setLoading(false);
       }
     };
+
     fetchData();
+    // Sinkronisasi otomatis setiap 3 detik
+    const syncInterval = setInterval(() => { fetchData(); }, 3000);
+    return () => clearInterval(syncInterval);
   }, []);
 
   const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  // --- LOGIKA STOK MULTI-PRODUK (OTOMATIS) ---
-  const stockMap: Record<string, { in: number, out: number }> = {};
-  
-  // 1. Kumpulkan semua stok masuk berdasarkan nama produk
+  // --- LOGIKA STOK MULTI-PRODUK (ANTI DUPLIKAT) ---
+  const stockMap: Record<string, { in: number, out: number, displayName: string }> = {};
+
   batches.forEach(b => {
-    const name = b.product_name || 'Pempek Campur';
-    if (!stockMap[name]) stockMap[name] = { in: 0, out: 0 };
-    if (b.status !== 'Sold Out') stockMap[name].in += b.total_qty;
+    const rawName = b.product_name || 'Pempek Campur';
+    const key = rawName.trim().toLowerCase(); 
+    
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim() };
+    if (b.status !== 'Sold Out') stockMap[key].in += Number(b.total_qty);
   });
 
-  // 2. Kurangi dengan stok yang terjual berdasarkan nama produk
   transactions.forEach(t => {
-    const name = t.product_name || 'Pempek Campur';
-    if (!stockMap[name]) stockMap[name] = { in: 0, out: 0 };
-    stockMap[name].out += t.qty;
+    const rawName = t.product_name || 'Pempek Campur';
+    const key = rawName.trim().toLowerCase(); 
+    
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim() };
+    stockMap[key].out += Number(t.qty);
   });
 
-  // 3. Ubah jadi list array untuk ditampilkan
-  const currentStocks = Object.keys(stockMap).map(name => ({
-    name,
-    qty: stockMap[name].in - stockMap[name].out
+  const currentStocks = Object.values(stockMap).map(item => ({
+    name: item.displayName,
+    qty: item.in - item.out
   }));
 
-
-  // --- LOGIKA KEUANGAN (SAMA SEPERTI SEBELUMNYA) ---
+  // --- LOGIKA KEUANGAN ---
   const todayStr = new Date().toLocaleDateString('en-CA');
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
@@ -69,47 +73,37 @@ export default function Dashboard() {
   const expToday = expenses.filter(e => new Date(e.created_at).toLocaleDateString('en-CA') === todayStr && e.category !== 'capex');
   const revToday = trxToday.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
   const qtyToday = trxToday.reduce((acc, curr) => acc + curr.qty, 0);
-  const opexToday = expToday.reduce((acc, curr) => acc + curr.amount, 0);
-  const profitToday = revToday - opexToday; // Simple gross profit harian
-
+  
   const trxThisMonth = transactions.filter(t => new Date(t.created_at).getMonth() === currentMonth && new Date(t.created_at).getFullYear() === currentYear);
   const revThisMonth = trxThisMonth.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
 
-  const adsExpensesThisMonth = expenses.filter(e => new Date(e.created_at).getMonth() === currentMonth && new Date(e.created_at).getFullYear() === currentYear && e.category === 'ads').reduce((acc, curr) => acc + curr.amount, 0);
+  const adsExpensesThisMonth = expenses.filter(e => new Date(e.created_at).getMonth() === currentMonth && new Date(e.created_at).getFullYear() === currentYear && (e.category === 'ads' || e.category === 'marketing')).reduce((acc, curr) => acc + curr.amount, 0);
   const qtyFromMetaAdsThisMonth = trxThisMonth.filter(t => t.type === 'meta_ads').reduce((acc, curr) => acc + curr.qty, 0);
   const cacMetaAds = qtyFromMetaAdsThisMonth > 0 ? (adsExpensesThisMonth / qtyFromMetaAdsThisMonth) : 0;
 
+  // Hapus transaksi tanpa pop-up konfirmasi
   const handleDelete = async (id: number) => {
-    if (window.confirm("Yakin ingin menghapus transaksi ini?")) {
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (!error) {
-        setTransactions(transactions.filter(trx => trx.id !== id));
-        toast.success('Data berhasil dihapus');
-      } else {
-        toast.error('Gagal menghapus data');
-      }
+    const { error } = await supabase.from('transactions').delete().eq('id', id);
+    if (!error) {
+      setTransactions(transactions.filter(trx => trx.id !== id));
+      toast.success('Data berhasil dihapus');
+    } else {
+      toast.error('Gagal menghapus data');
     }
   };
 
-  // --- KODE BARU: MESIN PEMBUAT PDF ---
   const generatePDF = (trx: any) => {
-    const doc = new jsPDF({
-      unit: "mm",
-      format: [80, 150] // Ukuran kertas thermal struk
-    });
+    const doc = new jsPDF({ unit: "mm", format: [80, 150] });
 
-    // Desain Header Struk
     doc.setFontSize(14);
     doc.text("Pempek Umiwa", 40, 15, { align: "center" });
     doc.setFontSize(8);
     doc.text("Pusat Pempek Frozen Bengkulu", 40, 20, { align: "center" });
     doc.text("------------------------------------------", 40, 25, { align: "center" });
 
-    // Detail Transaksi
     doc.text(`Tgl: ${new Date(trx.created_at).toLocaleDateString()}`, 10, 32);
     doc.text(`Cust: ${trx.customer_name}`, 10, 37);
 
-    // KODE YANG DIPERBAIKI: Menggunakan autoTable secara langsung
     autoTable(doc, {
       startY: 45,
       margin: { left: 5, right: 5 },
@@ -119,7 +113,6 @@ export default function Dashboard() {
       styles: { fontSize: 7 }
     });
 
-    // KODE YANG DIPERBAIKI: Mengambil posisi Y terakhir dengan aman
     const finalY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : 60;
     
     doc.setFontSize(10);
@@ -129,42 +122,81 @@ export default function Dashboard() {
     doc.text("Terima kasih sudah memesan!", 40, finalY + 15, { align: "center" });
     doc.text("IG: @pempek_os", 40, finalY + 20, { align: "center" });
 
-    // Download File
     doc.save(`Struk_${trx.customer_name}.pdf`);
     toast.success("Struk berhasil dibuat & didownload!");
   };
-  // --- BATAS KODE BARU ---
 
-  if (loading) return <div className="p-10 text-center text-slate-500 font-bold">Memuat Analitik...</div>;
+  if (loading) return <div className="p-10 text-center text-slate-500 font-bold">Memuat Dashboard...</div>;
 
   return (
     <div className="font-sans pb-24 bg-slate-50 min-h-screen">
       <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
         <div className="flex justify-between items-center mb-6">
-            <div><h1 className="text-xl font-bold tracking-tight">Pempek OS v2</h1><p className="text-emerald-100 text-xs">Pusat Komando Operasional</p></div>
+            <div><h1 className="text-xl font-bold tracking-tight">Pempek Umiwa</h1></div>
             
-            {/* TOMBOL MENUJU HALAMAN ANALITIK */}
             <Link href="/analytics" className="bg-white/20 p-2 rounded-full hover:bg-white/30 transition shadow-inner flex items-center cursor-pointer z-10">
               <Activity className="w-5 h-5 text-white mr-2" />
               <span className="text-xs font-bold text-white pr-1">Buka Analitik</span>
             </Link>
-          </div>
+        </div>
 
         {/* TRACKER SISA STOK BERDASARKAN PRODUK */}
-        <h3 className="text-xs font-bold text-emerald-100 mb-2 uppercase tracking-wider">Sisa Stok di Freezer</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {currentStocks.map((stock, idx) => (
-            <div key={idx} className={`p-3 rounded-xl border backdrop-blur-sm ${stock.qty < 5 ? 'bg-rose-500/90 border-rose-400 text-white' : 'bg-white/10 border-white/20 text-white'}`}>
-              <p className="text-[10px] opacity-80 font-bold truncate">{stock.name}</p>
-              <p className="text-xl font-black">{stock.qty} <span className="text-[10px] font-normal opacity-80">Pack</span></p>
+        <div className="mt-4 mb-2">
+            <h3 className="text-[11px] font-black text-emerald-100 mb-3 uppercase tracking-widest flex items-center opacity-90 drop-shadow-sm">
+                <Snowflake className="w-4 h-4 mr-1.5 opacity-80" />
+                Live Status Freezer
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-3">
+              {currentStocks.map((stock, idx) => {
+                  const isLow = stock.qty < 5;
+                  return (
+                    <div key={idx} className={`relative p-3.5 rounded-2xl border backdrop-blur-md overflow-hidden transition-all duration-300 ${isLow ? 'bg-rose-500/90 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-white/10 border-white/20 hover:bg-white/15'}`}>
+                      
+                      <div className="absolute -right-4 -bottom-4 opacity-10">
+                          <Package className="w-16 h-16 text-white" />
+                      </div>
+                      
+                      <div className="relative z-10 flex justify-between items-start mb-2">
+                          <p className="text-[11px] font-bold tracking-wide truncate pr-4 text-white/90 drop-shadow-sm">{stock.name}</p>
+                          {isLow && (
+                              <span className="absolute top-0 right-0 flex h-2.5 w-2.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-200 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                              </span>
+                          )}
+                      </div>
+                      
+                      <div className="relative z-10 flex items-end justify-between">
+                          <p className="text-3xl font-black drop-shadow-md tracking-tighter">
+                              {stock.qty} <span className="text-[10px] font-medium opacity-75 tracking-normal">Pack</span>
+                          </p>
+                          {isLow ? (
+                              <div className="bg-white/20 py-1 px-1.5 rounded-lg flex items-center border border-white/20">
+                                  <AlertCircle className="w-3 h-3 text-rose-100 mr-1" />
+                                  <span className="text-[8px] font-bold text-rose-50 uppercase tracking-wider">Kritis</span>
+                              </div>
+                          ) : (
+                              <div className="bg-emerald-900/30 py-1 px-2 rounded-lg flex items-center border border-emerald-400/20">
+                                  <span className="text-[8px] font-bold text-emerald-100 uppercase tracking-wider">Aman</span>
+                              </div>
+                          )}
+                      </div>
+                    </div>
+                  );
+              })}
+              
+              {currentStocks.length === 0 && (
+                  <div className="col-span-2 p-5 rounded-2xl bg-white/5 border border-white/10 border-dashed text-center backdrop-blur-sm">
+                      <Package className="w-6 h-6 mx-auto mb-2 opacity-50 text-emerald-100" />
+                      <p className="text-xs font-medium text-emerald-200">Belum ada data stok di freezer.</p>
+                  </div>
+              )}
             </div>
-          ))}
-          {currentStocks.length === 0 && <p className="text-xs text-emerald-200">Belum ada data stok.</p>}
         </div>
       </header>
 
       <main className="p-4 space-y-5 -mt-2">
-        {/* Laba Rugi dan Komponen lainnya tetap sama */}
         <section className="grid grid-cols-2 gap-3 mt-4">
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-2 opacity-10"><Calendar className="w-10 h-10" /></div>
