@@ -53,14 +53,29 @@ export default function TransactionsPage() {
     setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  // --- HITUNGAN SISA STOK ---
+  // --- HITUNGAN SISA STOK (MESIN PINTAR REAL-TIME) ---
   const getRemainingStock = (batchId: string) => {
     const batch = batches.find(b => b.id === batchId);
     if (!batch) return 0;
-    const soldQty = transactions.filter(t => t.batch_id === batchId).reduce((acc, t) => acc + t.qty, 0);
-    return batch.total_qty - soldQty;
+    
+    // Cari nama produknya (huruf kecil semua biar seragam)
+    const rawName = batch.product_name || 'Pempek Campur';
+    const productNameKey = rawName.trim().toLowerCase();
+
+    // 1. Hitung TOTAL MASUK (semua batch dengan nama produk yang sama)
+    const totalIn = batches
+      .filter(b => b.status !== 'Sold Out' && (b.product_name || 'Pempek Campur').trim().toLowerCase() === productNameKey)
+      .reduce((sum, b) => sum + Number(b.total_qty || 0), 0);
+
+    // 2. Hitung TOTAL KELUAR (semua transaksi dengan nama produk yang sama)
+    const totalOut = transactions
+      .filter(t => (t.product_name || 'Pempek Campur').trim().toLowerCase() === productNameKey)
+      .reduce((sum, t) => sum + Number(t.qty || 0), 0);
+
+    return totalIn - totalOut;
   };
 
+  // Buat daftar dropdown yang stoknya masih > 0
   const availableBatches = batches.filter(b => getRemainingStock(b.id) > 0);
 
   // --- HITUNGAN TOTAL TAGIHAN ---
