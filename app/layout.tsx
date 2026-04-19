@@ -8,6 +8,13 @@ export const metadata: Metadata = {
   description: "Operating System for Pempek Business",
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,     // Ini sihirnya: melarang HP untuk nge-zoom otomatis
+  userScalable: false, // Mengunci layar agar terasa seperti aplikasi asli
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode; }) {
   return (
     <html lang="id" suppressHydrationWarning>
