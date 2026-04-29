@@ -19,7 +19,7 @@ export default function Dashboard() {
       try {
         const [trxRes, batchRes, expRes] = await Promise.all([
           supabase.from('transactions').select('*').order('created_at', { ascending: false }),
-          supabase.from('batches').select('*').order('arrival_date', { ascending: false }),
+          supabase.from('batches').select('*').order('arrival_date', { ascending: false }), // <-- KOMA DI SINI
           supabase.from('expenses').select('*')
         ]);
         if (trxRes.data) setTransactions(trxRes.data);
@@ -41,28 +41,38 @@ export default function Dashboard() {
   const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
   // --- LOGIKA STOK MULTI-PRODUK (ANTI DUPLIKAT) ---
-  const stockMap: Record<string, { in: number, out: number, displayName: string }> = {};
+  const stockMap: Record<string, { in: number, out: number, displayName: string, isArchived: boolean }> = {};
 
   batches.forEach(b => {
     const rawName = b.product_name || 'Pempek Campur';
     const key = rawName.trim().toLowerCase(); 
     
-    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim() };
+    // Default anggap diarsip, sampai terbukti ada 1 saja batch yang belum diarsip
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim(), isArchived: true };
+    
+    // Hitung total masuk
     if (b.status !== 'Sold Out') stockMap[key].in += Number(b.total_qty);
+    
+    // Jika ada 1 saja batch yang is_archived = false, berarti produk ini masih aktif
+    if (!b.is_archived) stockMap[key].isArchived = false; 
   });
 
   transactions.forEach(t => {
     const rawName = t.product_name || 'Pempek Campur';
     const key = rawName.trim().toLowerCase(); 
     
-    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim() };
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim(), isArchived: false };
+    // Hitung total keluar (terjual)
     stockMap[key].out += Number(t.qty);
   });
 
-  const currentStocks = Object.values(stockMap).map(item => ({
-    name: item.displayName,
-    qty: item.in - item.out
-  }));
+  // TAHAP AKHIR: Hitung sisa stok, LALU sembunyikan yang masuk kotak arsip
+  const currentStocks = Object.values(stockMap)
+    .filter(item => item.isArchived === false) // <-- Ini kunci rahasianya: Sembunyikan dari layar!
+    .map(item => ({
+      name: item.displayName,
+      qty: item.in - item.out // Matematikanya tetap normal tidak minus
+    }));
 
   // --- LOGIKA KEUANGAN ---
   const todayStr = new Date().toLocaleDateString('en-CA');

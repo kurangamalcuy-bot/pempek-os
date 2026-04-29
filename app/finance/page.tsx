@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import BottomNav from '@/components/BottomNav'; // <-- DITAMBAHKAN AGAR BISA PINDAH HALAMAN
 import { 
     Wallet, Plus, Trash2, Pencil, Download, 
     ArrowUpCircle, ArrowDownCircle, Filter, 
@@ -25,8 +26,8 @@ export default function FinancePage() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
-  const [account, setAccount] = useState('Tunai (Laci)'); // FITUR BARU 3
-  const [paymentStatus, setPaymentStatus] = useState('Lunas'); // FITUR BARU 6
+  const [account, setAccount] = useState('Tunai (Laci)');
+  const [paymentStatus, setPaymentStatus] = useState('Lunas');
 
   useEffect(() => {
     fetchData();
@@ -81,20 +82,11 @@ export default function FinancePage() {
 
   const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  // 1. Saring dulu semua pengeluaran berdasarkan bulan & tahun
+  // Saring semua pengeluaran berdasarkan bulan & tahun
   const filteredExpenses = expenses.filter(e => {
     const d = new Date(e.entry_date);
     return (d.getMonth() + 1) === filterMonth && d.getFullYear() === filterYear;
   });
-
-  // 2. Baru hitung totalnya dari hasil saringan di atas (Letakkan di LUAR baris filter)
-  const totalInflowFiltered = filteredExpenses
-    .filter(e => e.type === 'income')
-    .reduce((acc, curr) => acc + curr.amount, 0);
-
-  const totalOutflowFiltered = filteredExpenses
-    .filter(e => e.type === 'expense')
-    .reduce((acc, curr) => acc + curr.amount, 0);
 
   // FUNGSI HAPUS ARUS KAS TANPA POP-UP
   const handleDelete = async (id: number) => {
@@ -109,7 +101,6 @@ export default function FinancePage() {
 
   // --- FUNGSI EDIT TRANSAKSI ---
   const handleEdit = (exp: any) => {
-    // 1. Tarik data dari kartu ke form input di atas
     setEditingId(exp.id);
     setType(exp.type);
     setCategory(exp.category || 'operational');
@@ -117,12 +108,10 @@ export default function FinancePage() {
     setPaymentStatus(exp.payment_status || 'Lunas');
     setAmount(exp.amount.toString());
     setDescription(exp.description);
-    
-    // 2. Arahkan layar otomatis ke atas (opsional tapi bikin UX bagus)
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-    return (
+  return (
     <div className="font-sans pb-24 bg-slate-50 min-h-screen">
       <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
         <h1 className="text-xl font-bold tracking-tight">Manajemen Arus Kas</h1>
@@ -141,7 +130,7 @@ export default function FinancePage() {
                     <p className="text-xs font-black text-slate-700">{formatIDR(balances.bank)}</p>
                 </div>
                 <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center text-[9px] font-bold text-slate-500 uppercase"><Smartphone className="w-3 h-3 mr-1 text-fuchsia-500"/> E-Wallet</div>
+                    <div className="flex items-center text-[9px] font-bold text-slate-500 uppercase"><Smartphone className="w-3 h-3 mr-1 text-fuchsia-500"/> E-Wallet/QRIS</div>
                     <p className="text-xs font-black text-slate-700">{formatIDR(balances.ewallet)}</p>
                 </div>
                 <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
@@ -158,8 +147,9 @@ export default function FinancePage() {
         {/* FORM INPUT DENGAN PILIHAN DOMPET & STATUS */}
         <section className={`p-5 rounded-2xl shadow-md border bg-white border-slate-200`}>
           <div className="flex space-x-2 mb-4">
-             <button onClick={() => setType('expense')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${type === 'expense' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>Pengeluaran</button>
-             <button onClick={() => setType('income')} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${type === 'income' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>Modal</button>
+             {/* PERBAIKAN: Set default category saat pindah tab */}
+             <button type="button" onClick={() => { setType('expense'); setCategory('operational'); }} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${type === 'expense' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>Pengeluaran</button>
+             <button type="button" onClick={() => { setType('income'); setCategory('modal'); }} className={`flex-1 py-2 rounded-xl text-xs font-bold transition ${type === 'income' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>Modal / Masuk</button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
@@ -169,7 +159,7 @@ export default function FinancePage() {
                     <select value={account} onChange={(e) => setAccount(e.target.value)} className="w-full p-2 border border-slate-200 rounded-lg text-xs outline-none bg-slate-50 font-bold">
                         <option value="Tunai (Laci)">Tunai (Laci)</option>
                         <option value="Rekening Bank">Rekening Bank</option>
-                        <option value="E-Wallet">E-Wallet</option>
+                        <option value="E-Wallet">E-Wallet/QRIS</option>
                         <option value="Marketplace">Marketplace</option>
                     </select>
                 </div>
@@ -182,8 +172,8 @@ export default function FinancePage() {
                 </div>
             </div>
 
-            {/* --- FITUR KATEGORI PENGELUARAN --- */}
-            {type === 'expense' && (
+            {/* --- PERBAIKAN: KATEGORI DINAMIS BERDASARKAN TAB --- */}
+            {type === 'expense' ? (
                 <div className="animate-in fade-in zoom-in duration-200">
                     <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Kategori Pengeluaran</label>
                     <select 
@@ -191,16 +181,31 @@ export default function FinancePage() {
                       onChange={(e) => setCategory(e.target.value)} 
                       className="w-full p-3 border border-slate-200 rounded-xl text-xs outline-none bg-white font-bold text-slate-900 focus:border-rose-400"
                     >
-                        <option value="operational">🍔 Operasional (Bahan, Ongkir, Gaji)</option>
+                        <option value="operational">🍔 Operasional (Listrik, Gaji, dll)</option>
                         <option value="marketing">🚀 Marketing & Iklan (Meta/TikTok Ads)</option>
-                        <option value="capex">📦 Capex / Investasi (Alat, Freezer)</option>
+                        {/* INI KUNCI UTAMANYA: Opsi Beli Stok tidak masuk laba rugi */}
+                        <option value="stok">📦 Beli Stok/Bahan (Aset - BUKAN Beban)</option>
+                        <option value="capex">🏗️ Capex / Investasi (Alat, Freezer)</option>
+                    </select>
+                </div>
+            ) : (
+                <div className="animate-in fade-in zoom-in duration-200">
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Kategori Pemasukan</label>
+                    <select 
+                      value={category} 
+                      onChange={(e) => setCategory(e.target.value)} 
+                      className="w-full p-3 border border-slate-200 rounded-xl text-xs outline-none bg-white font-bold text-slate-900 focus:border-emerald-400"
+                    >
+                        {/* INI KUNCI KEDUA: Opsi Setor modal uang pribadi */}
+                        <option value="modal">🏦 Setoran Modal Uang Pribadi</option>
+                        <option value="other">✨ Pemasukan Lainnya (Non-Kasir)</option>
                     </select>
                 </div>
             )}
             {/* ------------------------------------ */}
 
             <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Nominal (Rp)" className="w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none text-slate-900" />
-            <input type="text" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Keterangan Transaksi" className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none" />
+            <input type="text" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Keterangan (Cth: Beli bahan 100 pack / Modal Awal)" className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none" />
             <button type="submit" className={`w-full text-white font-bold p-3 rounded-xl shadow-lg transition-transform active:scale-95 ${type === 'income' ? 'bg-emerald-600' : 'bg-slate-900'}`}>
                {editingId ? 'Update Data' : 'Simpan Transaksi'}
             </button>
@@ -214,35 +219,18 @@ export default function FinancePage() {
               <Filter className="w-4 h-4 mr-1"/> Riwayat Kas
             </h3>
             
-            {/* UI FILTER BULAN & TAHUN */}
             <div className="flex space-x-1">
-              <select 
-                value={filterMonth} 
-                onChange={(e) => setFilterMonth(Number(e.target.value))}
-                className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white outline-none"
-              >
-                {[...Array(12)].map((_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {new Date(0, i).toLocaleString('id-ID', { month: 'short' })}
-                  </option>
-                ))}
+              <select value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white outline-none">
+                {[...Array(12)].map((_, i) => (<option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>))}
               </select>
-
-              <select 
-                value={filterYear} 
-                onChange={(e) => setFilterYear(Number(e.target.value))}
-                className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white outline-none"
-              >
-                <option value={2026}>2026</option>
-                <option value={2025}>2025</option>
+              <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white outline-none">
+                <option value={2026}>2026</option><option value={2025}>2025</option>
               </select>
             </div>
           </div>
           <div className="space-y-2">
             {filteredExpenses.map((exp) => (
               <div key={exp.id} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm mb-3">
-                
-                {/* BAGIAN ATAS KARTU */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className={`p-2 rounded-lg ${exp.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
@@ -252,14 +240,10 @@ export default function FinancePage() {
                       <p className="text-sm font-bold text-slate-800">{exp.description}</p>
                       <div className="flex items-center space-x-1.5 mt-0.5">
                         <p className="text-[10px] font-bold text-slate-400 uppercase">{exp.account}</p>
-                        {exp.type === 'expense' && (
-                          <>
-                            <span className="text-[10px] text-slate-300">•</span>
-                            <p className="text-[10px] font-black text-indigo-500 uppercase">
-                              {exp.category === 'operational' ? 'Operasional' : exp.category === 'marketing' ? 'Marketing' : exp.category === 'capex' ? 'Capex' : exp.category}
-                            </p>
-                          </>
-                        )}
+                        <span className="text-[10px] text-slate-300">•</span>
+                        <p className="text-[10px] font-black text-indigo-500 uppercase">
+                           {exp.category === 'operational' ? 'Operasional' : exp.category === 'marketing' ? 'Marketing' : exp.category === 'capex' ? 'Capex' : exp.category === 'stok' ? 'Beli Stok' : exp.category === 'modal' ? 'Modal' : exp.category}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -275,28 +259,23 @@ export default function FinancePage() {
                   </div>
                 </div>
 
-                {/* BAGIAN TOMBOL EDIT & HAPUS */}
                 <div className="flex justify-end space-x-2 border-t border-slate-50 pt-3 mt-3">
-                  <button 
-                    onClick={() => handleEdit(exp)} 
-                    className="flex items-center text-[10px] bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200 transition-colors"
-                  >
+                  <button onClick={() => handleEdit(exp)} className="flex items-center text-[10px] bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200 transition-colors">
                     <Pencil className="w-3 h-3 mr-1"/> Edit
                   </button>
-                  <button 
-                    onClick={() => handleDelete(exp.id)} 
-                    className="flex items-center text-[10px] bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg font-bold hover:bg-rose-100 transition-colors"
-                  >
+                  <button onClick={() => handleDelete(exp.id)} className="flex items-center text-[10px] bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg font-bold hover:bg-rose-100 transition-colors">
                     <Trash2 className="w-3 h-3 mr-1"/> Hapus
                   </button>
                 </div>
-
               </div>
             ))}
           </div>
         </section>
 
       </main>
+      
+      {/* --- TAMBAHAN PENTING --- */}
+      <BottomNav />
     </div>
   );
 }

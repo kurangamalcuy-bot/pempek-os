@@ -6,7 +6,8 @@ import {
     BarChart3, Calendar, ArrowLeft, Target, Wallet, AlertCircle, Clock, 
     Activity, PieChart, Share2, Flame, ShoppingCart, Users, Archive, 
     Crown, UserMinus, Sprout, Star, Crosshair, AlertTriangle, Coins, PackageOpen,
-    Layers, Percent // <-- Ini yang baru ditambahkan
+    Layers, Percent, // <-- Koma wajib ditambahkan di sini
+    Scale, Trash2, ArrowDownCircle, ArrowUpCircle // Coins yang double sudah saya hapus
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -37,8 +38,9 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const fetchData = async () => {
       const [trxRes, batchRes, expRes] = await Promise.all([
-        supabase.from('transactions').select('*').order('created_at', { ascending: true }),
-        supabase.from('batches').select('*'),
+        supabase.from('transactions').select('*'),
+        // Tambahkan filter .eq('is_archived', false) di sini:
+        supabase.from('batches').select('*').eq('is_archived', false), 
         supabase.from('expenses').select('*')
       ]);
       if (trxRes.data) setTransactions(trxRes.data);
@@ -125,10 +127,7 @@ export default function AnalyticsPage() {
 
   // A. FUNGSI FILTER HARAM (Hanya untuk Pengeluaran Riil, bukan Modal/Uang Masuk)
   const isRealExpense = (e: any) => {
-    const category = (e.category || '').toLowerCase();
-    const type = (e.type || '').toLowerCase();
-    // Syarat mutlak: Bukan modal, bukan income, bukan kategori modal
-    return category !== 'modal' && type !== 'modal' && type !== 'income';
+    return (e.type || '').toLowerCase() === 'expense';
   };
 
   // B. DATA UNTUK LABA/RUGI (BISA DIFILTER PER BULAN)
@@ -160,19 +159,67 @@ export default function AnalyticsPage() {
   const totalRevenue = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)), 0);
   const totalHPP = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.qty) * 15000), 0);
   const totalCapex = filteredExp.filter(e => e.category === 'capex').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
-  const totalAds = filteredExp.filter(e => e.category === 'ads' || e.category === 'marketing').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
-  const totalOpex = filteredExp.filter(e => e.category !== 'capex' && e.category !== 'ads' && e.category !== 'marketing').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const totalAds = filteredExp.filter(e => e.category === 'marketing' || e.category === 'ads').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const totalStok = filteredExp.filter(e => e.category === 'stok').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const totalOpex = filteredExp.filter(e => e.category === 'operational' || e.category === 'operasional').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
 
   const netProfit = (totalRevenue - totalHPP) - totalOpex - totalAds;
   const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalHPP) / totalRevenue) * 100 : 0;
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
+  // ==========================================
+  // LOGIKA TAMBAHAN A: VALUASI PERSEDIAAN STOK (UANG MENGENDAP & BASI)
+  // ==========================================
+  let totalModalSisaDiFreezer = 0;
+  let totalRugiBarangBasi = 0;
+
+  batches.forEach(b => {
+      const bDate = safeDate(b.arrival_date);
+      let isInFilter = true;
+      if (pnlFilter === 'this_month') isInFilter = bDate.getMonth() === currentMonth && bDate.getFullYear() === currentYear;
+      if (pnlFilter === 'last_month') isInFilter = bDate.getMonth() === (currentMonth===0?11:currentMonth-1) && bDate.getFullYear() === (currentMonth===0?currentYear-1:currentYear);
+
+      if (isInFilter) {
+          const qtyMasuk = safeNum(b.total_qty);
+          const modalPerPack = safeNum(b.base_cost_per_qty);
+
+          // Hitung yang sudah terjual khusus batch ini
+          const terjual = transactions.filter(t => t.batch_id === b.id).reduce((sum, t) => sum + safeNum(t.qty), 0);
+          const sisaQty = qtyMasuk - terjual;
+
+          if (sisaQty > 0) {
+              if (b.status === 'Rusak/Basi') { // Sesuaikan nama status basi dengan di app/batches
+                  totalRugiBarangBasi += (sisaQty * modalPerPack);
+              } else {
+                  totalModalSisaDiFreezer += (sisaQty * modalPerPack);
+              }
+          }
+      }
+  });
+
+  // ==========================================
+  // LOGIKA TAMBAHAN B: ARUS KAS FISIK (DOMPET ASLI)
+  // ==========================================
+  // 1. Uang Masuk Fisik
+  const totalCashInSales = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.amount_paid) || (safeNum(curr.qty) * safeNum(curr.selling_price))), 0);
+  const totalCashInModal = filteredExp.filter(e => e.type === 'income').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const totalCashIn = totalCashInSales + totalCashInModal;
+
+  // 2. Uang Keluar Fisik (Termasuk beli stok yang belum laku jadi uang)
+  const totalCashOutStok = filteredExp.filter(e => e.type === 'expense' && e.category === 'stok').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const totalCashOutCapex = totalCapex; // Narik dari variabel lama Anda
+  const totalCashOutOpexAds = totalOpex + totalAds; // Narik dari variabel lama Anda
+  const totalCashOut = totalCashOutStok + totalCashOutCapex + totalCashOutOpexAds;
+
+  // 3. Dompet Akhir
+  const netCashFlow = totalCashIn - totalCashOut;
+
   // C. DATA KHUSUS BEP TRACKER (SELALU ALL TIME)
   const allTimeRev = transactions.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)), 0);
   const allTimeHPP = transactions.reduce((acc, curr) => acc + (safeNum(curr.qty) * 15000), 0);
   
-  // Hitung pengeluaran operasional sepanjang masa (kecuali Modal & Capex)
-  const allTimeRealExp = expenses.filter(e => isRealExpense(e) && e.category !== 'capex').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  // Hitung pengeluaran operasional sepanjang masa (kecuali Modal, Capex, dan Stok)
+  const allTimeRealExp = expenses.filter(e => isRealExpense(e) && (e.category === 'operational' || e.category === 'operasional' || e.category === 'marketing' || e.category === 'ads')).reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   
   const allTimeNetProfit = (allTimeRev - allTimeHPP) - allTimeRealExp;
   const allTimeCapex = expenses.filter(e => e.category === 'capex').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
@@ -416,10 +463,15 @@ export default function AnalyticsPage() {
             </div>
             
             <div className="bg-white/5 p-4 rounded-2xl border border-white/5 space-y-3">
-                <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center">Breakdown Biaya</p>
-                <div className="flex justify-between text-xs"><span>Ads Marketing</span><span className="font-bold text-blue-400">{formatIDR(totalAds)}</span></div>
-                <div className="flex justify-between text-xs"><span>Operasional</span><span className="font-bold text-rose-400">{formatIDR(totalOpex)}</span></div>
-                <div className="flex justify-between text-xs"><span>Capex (Investasi)</span><span className="font-bold text-indigo-400">{formatIDR(totalCapex)}</span></div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center">Breakdown Biaya (Mengurangi Laba)</p>
+                <div className="flex justify-between text-xs"><span>Ads Marketing</span><span className="font-bold text-blue-400">- {formatIDR(totalAds)}</span></div>
+                <div className="flex justify-between text-xs"><span>Operasional</span><span className="font-bold text-rose-400">- {formatIDR(totalOpex)}</span></div>
+                
+                <div className="border-t border-white/10 pt-3 mt-3 space-y-2">
+                    <p className="text-[9px] font-bold text-slate-500 uppercase">Aliran Kas Keluar (Aset / Tdk Kurangi Laba)</p>
+                    <div className="flex justify-between text-xs"><span>Capex (Investasi)</span><span className="font-bold text-indigo-400">{formatIDR(totalCapex)}</span></div>
+                    <div className="flex justify-between text-xs"><span>Beli Stok (Aset)</span><span className="font-bold text-teal-400">{formatIDR(totalStok)}</span></div>
+                </div>
             </div>
 
             <div className="pt-4 flex justify-between items-center">
@@ -435,6 +487,72 @@ export default function AnalyticsPage() {
                         Net: {netMargin.toFixed(1)}%
                     </div>
                 </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================== */}
+        {/* FITUR BARU 1: VALUASI STOK (UANG NYANGKUT) */}
+        {/* ========================================== */}
+        <section className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white mb-2 border border-slate-800 z-30 relative">
+          <h3 className="font-bold flex items-center text-sm uppercase tracking-widest mb-4">
+            <Archive className="w-5 h-5 mr-3 text-amber-400"/> Realitas Stok & Kerugian
+          </h3>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl">
+                  <PackageOpen className="w-6 h-6 text-indigo-400 mb-2"/>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Modal Mengendap</p>
+                  <p className="text-lg font-black text-indigo-400 mt-1">{formatIDR(totalModalSisaDiFreezer)}</p>
+                  <p className="text-[9px] text-slate-500 mt-1">Sisa stok di freezer.</p>
+              </div>
+              <div className="bg-rose-950/30 border border-rose-900/50 p-4 rounded-2xl">
+                  <Trash2 className="w-6 h-6 text-rose-500 mb-2"/>
+                  <p className="text-[10px] font-bold text-rose-400/70 uppercase">Rugi Stok Basi</p>
+                  <p className="text-lg font-black text-rose-500 mt-1">- {formatIDR(totalRugiBarangBasi)}</p>
+                  <p className="text-[9px] text-rose-500/60 mt-1">Uang hangus 100%.</p>
+              </div>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
+              <div className="flex justify-between items-center mb-2">
+                 <p className="text-xs font-bold text-amber-500">Laba Kertas vs Rugi Basi</p>
+                 <Scale className="w-4 h-4 text-amber-500"/>
+              </div>
+              <p className="text-[9px] text-slate-400 mb-2">Laba bersih dikurangi total kerugian barang basi.</p>
+              <div className="flex justify-between items-center border-t border-amber-500/20 pt-2">
+                 <span className="text-xs text-amber-200">Keuntungan Real:</span>
+                 <span className={`text-lg font-black ${netProfit - totalRugiBarangBasi >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                    {formatIDR(netProfit - totalRugiBarangBasi)}
+                 </span>
+              </div>
+          </div>
+        </section>
+
+        {/* ========================================== */}
+        {/* FITUR BARU 2: ARUS KAS FISIK (CASH FLOW)  */}
+        {/* ========================================== */}
+        <section className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white mb-6 border border-slate-800 z-30 relative">
+          <h3 className="font-bold flex items-center text-sm uppercase tracking-widest mb-4">
+            <Coins className="w-5 h-5 mr-3 text-emerald-400"/> Arus Kas Fisik (Cash Flow)
+          </h3>
+          <div className="space-y-4">
+            <div className="bg-emerald-950/20 border border-emerald-900/30 p-4 rounded-2xl space-y-2">
+                <p className="text-[10px] font-bold text-emerald-500 uppercase flex items-center"><ArrowDownCircle className="w-3 h-3 mr-1"/> Uang Masuk Fisik</p>
+                <div className="flex justify-between text-xs"><span>Omzet / DP Masuk</span><span className="font-bold text-emerald-400">{formatIDR(totalCashInSales)}</span></div>
+                <div className="flex justify-between text-xs"><span>Setoran Modal</span><span className="font-bold text-emerald-400">{formatIDR(totalCashInModal)}</span></div>
+            </div>
+            <div className="bg-rose-950/20 border border-rose-900/30 p-4 rounded-2xl space-y-2">
+                <p className="text-[10px] font-bold text-rose-500 uppercase flex items-center"><ArrowUpCircle className="w-3 h-3 mr-1"/> Uang Keluar Fisik</p>
+                <div className="flex justify-between text-xs"><span>Beli Stok (Aset/Harta)</span><span className="font-bold text-rose-400">- {formatIDR(totalCashOutStok)}</span></div>
+                <div className="flex justify-between text-xs"><span>Opex & Iklan</span><span className="font-bold text-rose-400">- {formatIDR(totalCashOutOpexAds)}</span></div>
+                <div className="flex justify-between text-xs"><span>Beli Alat/Capex</span><span className="font-bold text-rose-400">- {formatIDR(totalCashOutCapex)}</span></div>
+            </div>
+            <div className="pt-2 flex justify-between items-center border-t border-slate-700">
+                <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Posisi Kas Dompet</p>
+                </div>
+                <h2 className={`text-2xl font-black ${netCashFlow >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                    {netCashFlow >= 0 ? '+' : ''}{formatIDR(netCashFlow)}
+                </h2>
             </div>
           </div>
         </section>

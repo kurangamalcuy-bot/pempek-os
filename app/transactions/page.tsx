@@ -18,7 +18,7 @@ export default function TransactionsPage() {
   const [phone, setPhone] = useState('628');
   const [showSuggestions, setShowSuggestions] = useState(false);
   // items adalah array yang menyimpan baris-baris produk yang dipilih
-  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: '20000', customPrice: '' }]);
+  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
   const [type, setType] = useState('organik'); 
   const [account, setAccount] = useState('Tunai (Laci)');
   const [paymentStatus, setPaymentStatus] = useState('lunas');
@@ -38,7 +38,7 @@ export default function TransactionsPage() {
 
   // --- FUNGSI DINAMIS UNTUK BARIS PRODUK ---
   const handleAddRow = () => {
-    setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: '20000', customPrice: '' }]);
+    setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
   };
 
   const handleRemoveRow = (id: number) => {
@@ -82,7 +82,16 @@ export default function TransactionsPage() {
   const calculateGrandTotal = () => {
     return items.reduce((total, item) => {
       if (!item.batchId || !item.qty) return total;
-      const price = item.priceOption === 'custom' ? Number(item.customPrice) || 0 : Number(item.priceOption);
+      
+      let price = 0;
+      if (item.priceOption === 'custom') {
+        price = Number(item.customPrice) || 0;
+      } else {
+        const batch = batches.find(b => b.id === item.batchId);
+        // Fallback to normal price if reseller/online is missing
+        price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
+      }
+      
       return total + (Number(item.qty) * price);
     }, 0);
   };
@@ -113,7 +122,12 @@ export default function TransactionsPage() {
 
         const payload = validItems.map(item => {
             const batch = batches.find(b => b.id === item.batchId);
-            const price = item.priceOption === 'custom' ? Number(item.customPrice) : Number(item.priceOption);
+            let price = 0;
+            if (item.priceOption === 'custom') {
+               price = Number(item.customPrice) || 0;
+            } else {
+               price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
+            }
             const subtotal = Number(item.qty) * price;
 
             let itemPaid = 0;
@@ -218,7 +232,7 @@ export default function TransactionsPage() {
     setEditingId(null);
     setName('');
     setPhone('628');
-    setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: '20000', customPrice: '' }]);
+    setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
     setPaymentStatus('lunas');
     setAmountPaid('');
   };
@@ -341,8 +355,27 @@ export default function TransactionsPage() {
                                     />
                                     {isQtyInvalid && <p className="text-[10px] text-rose-600 font-bold mt-1">⚠️ Maks: {currentStock}</p>}
                                 </div>
-                                <select value={item.priceOption} onChange={(e) => updateItem(item.id, 'priceOption', e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-sm font-bold">
-                                    <option value="20000">Rp 20.000</option><option value="25000">Rp 25.000</option><option value="custom">Manual...</option>
+                                <select 
+                                    value={item.priceOption} 
+                                    onChange={(e) => updateItem(item.id, 'priceOption', e.target.value)} 
+                                    className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-sm font-bold"
+                                    disabled={!item.batchId} // Matikan dropdown kalau belum pilih produk
+                                >
+                                    {/* Jika belum pilih produk, tampilkan placeholder */}
+                                    {!item.batchId && <option value="normal">Pilih Produk Dulu</option>}
+                                    
+                                    {/* Jika sudah pilih produk, tampilkan opsi harga dari produk tersebut */}
+                                    {item.batchId && (() => {
+                                        const selectedBatch = batches.find(b => b.id === item.batchId);
+                                        return (
+                                            <>
+                                                <option value="normal">Normal: {formatIDR(selectedBatch?.price_normal || 0)}</option>
+                                                {selectedBatch?.price_reseller > 0 && <option value="reseller">Reseller: {formatIDR(selectedBatch.price_reseller)}</option>}
+                                                {selectedBatch?.price_online > 0 && <option value="online">Online App: {formatIDR(selectedBatch.price_online)}</option>}
+                                                <option value="custom">✏️ Manual (Kustom)</option>
+                                            </>
+                                        );
+                                    })()}
                                 </select>
                             </div>
                             {item.priceOption === 'custom' && (
@@ -379,7 +412,7 @@ export default function TransactionsPage() {
             <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Jalur Pembeli</label>
                 <div className="grid grid-cols-3 gap-2">
-                <label className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold cursor-pointer ${type === 'organik' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}><input type="radio" value="organik" checked={type === 'organik'} onChange={() => setType('organik')} className="hidden" /><Smartphone className="w-4 h-4 mb-1" /> WA</label>
+                <label className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold cursor-pointer ${type === 'organik' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}><input type="radio" value="organik" checked={type === 'organik'} onChange={() => setType('organik')} className="hidden" /><Smartphone className="w-4 h-4 mb-1" /> WA/Langsung</label>
                 <label className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold cursor-pointer ${type === 'marketplace' ? 'bg-orange-50 border-orange-500 text-orange-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}><input type="radio" value="marketplace" checked={type === 'marketplace'} onChange={() => setType('marketplace')} className="hidden" /><Store className="w-4 h-4 mb-1" /> Market</label>
                 <label className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold cursor-pointer ${type === 'meta_ads' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-slate-50 border-slate-200 text-slate-500'}`}><input type="radio" value="meta_ads" checked={type === 'meta_ads'} onChange={() => setType('meta_ads')} className="hidden" /><Megaphone className="w-4 h-4 mb-1" /> Ads</label>
                 </div>
