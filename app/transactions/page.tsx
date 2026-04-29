@@ -343,19 +343,17 @@ export default function TransactionsPage() {
                             </select>
 
                             {/* UBAH grid-cols-2 MENJADI grid-cols-3 */}
-                            {/* Gap diperkecil jadi gap-2 agar kotak makin lega */}
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <input 
                                         type="text" inputMode="numeric" required 
-                                        placeholder="Qty" /* <-- Diubah jadi Qty */
+                                        placeholder="Qty" 
                                         value={item.qty} 
                                         onChange={(e) => {
                                             let val = e.target.value.replace(/[^0-9]/g, '');
                                             if (val.startsWith('0')) val = val.substring(1);
                                             updateItem(item.id, 'qty', val);
                                         }} 
-                                        {/* Padding kiri-kanan dikurangi (px-2) agar teks aman */}
                                         className={`w-full px-2 py-3 border rounded-xl outline-none font-bold text-slate-900 text-sm text-center ${isQtyInvalid ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white'}`} 
                                     />
                                     {isQtyInvalid && <p className="text-[10px] text-rose-600 font-bold mt-1 leading-tight">⚠️ Maks: {currentStock}</p>}
@@ -363,7 +361,6 @@ export default function TransactionsPage() {
                                 <select 
                                     value={item.priceOption} 
                                     onChange={(e) => updateItem(item.id, 'priceOption', e.target.value)} 
-                                    {/* Padding kiri-kanan dikurangi juga di sini */}
                                     className="col-span-2 w-full px-2 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-xs font-bold"
                                     disabled={!item.batchId}
                                 >
