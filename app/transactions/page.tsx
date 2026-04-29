@@ -342,8 +342,11 @@ export default function TransactionsPage() {
                                 ))}
                             </select>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
+                            {/* UBAH grid-cols-2 MENJADI grid-cols-3 */}
+                            <div className="grid grid-cols-3 gap-3">
+                                
+                                {/* TAMBAHKAN col-span-1 DI SINI */}
+                                <div className="col-span-1">
                                     <input 
                                         type="text" inputMode="numeric" required placeholder="Jml Pack" value={item.qty} 
                                         onChange={(e) => {
@@ -351,28 +354,30 @@ export default function TransactionsPage() {
                                             if (val.startsWith('0')) val = val.substring(1);
                                             updateItem(item.id, 'qty', val);
                                         }} 
-                                        className={`w-full p-3 border rounded-xl outline-none font-bold text-slate-900 text-sm ${isQtyInvalid ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white'}`} 
+                                        className={`w-full p-3 border rounded-xl outline-none font-bold text-slate-900 text-sm text-center ${isQtyInvalid ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white'}`} 
                                     />
-                                    {isQtyInvalid && <p className="text-[10px] text-rose-600 font-bold mt-1">⚠️ Maks: {currentStock}</p>}
+                                    {isQtyInvalid && <p className="text-[10px] text-rose-600 font-bold mt-1 leading-tight">⚠️ Maks: {currentStock}</p>}
                                 </div>
+                                
+                                {/* TAMBAHKAN col-span-2 dan ubah text-sm jadi text-xs DI SINI */}
                                 <select 
                                     value={item.priceOption} 
                                     onChange={(e) => updateItem(item.id, 'priceOption', e.target.value)} 
-                                    className="w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-sm font-bold"
-                                    disabled={!item.batchId} // Matikan dropdown kalau belum pilih produk
+                                    className="col-span-2 w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-xs font-bold"
+                                    disabled={!item.batchId}
                                 >
-                                    {/* Jika belum pilih produk, tampilkan placeholder */}
+                                    {/* Jika belum pilih produk */}
                                     {!item.batchId && <option value="normal">Pilih Produk Dulu</option>}
                                     
-                                    {/* Jika sudah pilih produk, tampilkan opsi harga dari produk tersebut */}
+                                    {/* Jika sudah pilih produk */}
                                     {item.batchId && (() => {
                                         const selectedBatch = batches.find(b => b.id === item.batchId);
                                         return (
                                             <>
                                                 <option value="normal">Normal: {formatIDR(selectedBatch?.price_normal || 0)}</option>
                                                 {selectedBatch?.price_reseller > 0 && <option value="reseller">Reseller: {formatIDR(selectedBatch.price_reseller)}</option>}
-                                                {selectedBatch?.price_online > 0 && <option value="online">Online App: {formatIDR(selectedBatch.price_online)}</option>}
-                                                <option value="custom">✏️ Manual (Kustom)</option>
+                                                {selectedBatch?.price_online > 0 && <option value="online">Online: {formatIDR(selectedBatch.price_online)}</option>}
+                                                <option value="custom">✏️ Harga Manual</option>
                                             </>
                                         );
                                     })()}

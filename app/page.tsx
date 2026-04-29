@@ -140,7 +140,7 @@ export default function Dashboard() {
 
   return (
     <div className="font-sans pb-24 bg-slate-50 min-h-screen">
-      <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
+      <header className="bg-emerald-600 text-white p-5 pb-12 rounded-b-[40px] shadow-lg">
         <div className="flex justify-between items-center mb-6">
             <div><h1 className="text-xl font-bold tracking-tight">Pempek Umiwa</h1></div>
             
@@ -168,7 +168,7 @@ export default function Dashboard() {
                       </div>
                       
                       <div className="relative z-10 flex justify-between items-start mb-2">
-                          <p className="text-[11px] font-bold tracking-wide truncate pr-4 text-white/90 drop-shadow-sm">{stock.name}</p>
+                          <p className="text-[11px] font-bold tracking-wide leading-tight pr-4 text-white/90 drop-shadow-sm">{stock.name}</p>
                           {isLow && (
                               <span className="absolute top-0 right-0 flex h-2.5 w-2.5">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-200 opacity-75"></span>
@@ -206,7 +206,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="p-4 space-y-5 -mt-2">
+      <main className="p-4 space-y-5 -mt-6 relative z-10">
         <section className="grid grid-cols-2 gap-3 mt-4">
           <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-2 opacity-10"><Calendar className="w-10 h-10" /></div>
