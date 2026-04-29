@@ -259,12 +259,12 @@ export default function TransactionsPage() {
   
   return (
     <div className="font-sans pb-24">
-      <header className="bg-emerald-600 text-white p-5 rounded-b-3xl shadow-md">
+      <header className="bg-emerald-600 text-white p-5 pb-12 rounded-b-[40px] shadow-lg">
         <h1 className="text-xl font-bold tracking-tight">Catat Penjualan</h1>
         <p className="text-emerald-100 text-xs">Catat setiap kali ada yang beli</p>
       </header>
 
-      <main className="p-5 space-y-6">
+      <main className="p-5 space-y-6 -mt-6 relative z-10">
         <form onSubmit={handleSubmit} className="space-y-6">
           
           {/* DATA PELANGGAN */}
@@ -343,33 +343,31 @@ export default function TransactionsPage() {
                             </select>
 
                             {/* UBAH grid-cols-2 MENJADI grid-cols-3 */}
-                            <div className="grid grid-cols-3 gap-3">
-                                
-                                {/* TAMBAHKAN col-span-1 DI SINI */}
+                            {/* Gap diperkecil jadi gap-2 agar kotak makin lega */}
+                            <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-1">
                                     <input 
-                                        type="text" inputMode="numeric" required placeholder="Jml Pack" value={item.qty} 
+                                        type="text" inputMode="numeric" required 
+                                        placeholder="Qty" /* <-- Diubah jadi Qty */
+                                        value={item.qty} 
                                         onChange={(e) => {
                                             let val = e.target.value.replace(/[^0-9]/g, '');
                                             if (val.startsWith('0')) val = val.substring(1);
                                             updateItem(item.id, 'qty', val);
                                         }} 
-                                        className={`w-full p-3 border rounded-xl outline-none font-bold text-slate-900 text-sm text-center ${isQtyInvalid ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white'}`} 
+                                        {/* Padding kiri-kanan dikurangi (px-2) agar teks aman */}
+                                        className={`w-full px-2 py-3 border rounded-xl outline-none font-bold text-slate-900 text-sm text-center ${isQtyInvalid ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-slate-200 bg-white'}`} 
                                     />
                                     {isQtyInvalid && <p className="text-[10px] text-rose-600 font-bold mt-1 leading-tight">⚠️ Maks: {currentStock}</p>}
                                 </div>
-                                
-                                {/* TAMBAHKAN col-span-2 dan ubah text-sm jadi text-xs DI SINI */}
                                 <select 
                                     value={item.priceOption} 
                                     onChange={(e) => updateItem(item.id, 'priceOption', e.target.value)} 
-                                    className="col-span-2 w-full p-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-xs font-bold"
+                                    {/* Padding kiri-kanan dikurangi juga di sini */}
+                                    className="col-span-2 w-full px-2 py-3 border border-slate-200 rounded-xl bg-white text-slate-900 outline-none text-xs font-bold"
                                     disabled={!item.batchId}
                                 >
-                                    {/* Jika belum pilih produk */}
                                     {!item.batchId && <option value="normal">Pilih Produk Dulu</option>}
-                                    
-                                    {/* Jika sudah pilih produk */}
                                     {item.batchId && (() => {
                                         const selectedBatch = batches.find(b => b.id === item.batchId);
                                         return (
