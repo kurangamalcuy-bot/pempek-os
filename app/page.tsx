@@ -157,48 +157,60 @@ export default function Dashboard() {
                 Live Status Freezer
             </h3>
             
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2.5">
               {currentStocks.map((stock, idx) => {
-                  const isLow = stock.qty < 5;
+                  
+                  // --- BOS BISA UBAH ANGKA BATAS KRITIS DI SINI ---
+                  // Jika sisa stok di bawah atau sama dengan angka ini, statusnya jadi Kritis
+                  const batasKritis = 10; 
+                  
+                  // Logika 3 Status
+                  const isHabis = stock.qty <= 0;
+                  const isKritis = stock.qty > 0 && stock.qty <= batasKritis;
+
                   return (
-                    <div key={idx} className={`relative p-3.5 rounded-2xl border backdrop-blur-md overflow-hidden transition-all duration-300 ${isLow ? 'bg-rose-500/90 border-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : 'bg-white/10 border-white/20 hover:bg-white/15'}`}>
+                    // Background Merah HANYA jika isHabis
+                    <div key={idx} className={`flex items-center justify-between p-3 rounded-xl border backdrop-blur-md transition-all duration-300 ${isHabis ? 'bg-rose-500/90 border-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.3)]' : 'bg-white/10 border-white/20 hover:bg-white/15'}`}>
                       
-                      <div className="absolute -right-4 -bottom-4 opacity-10">
-                          <Package className="w-16 h-16 text-white" />
+                      {/* Kiri: Ikon & Nama */}
+                      <div className="flex items-center space-x-3">
+                        <Package className={`w-5 h-5 ${isHabis ? 'text-rose-100' : 'text-emerald-100 opacity-70'}`} />
+                        <div>
+                           <p className="text-xs font-bold tracking-wide text-white drop-shadow-sm">{stock.name}</p>
+                        </div>
                       </div>
                       
-                      <div className="relative z-10 flex justify-between items-start mb-2">
-                          <p className="text-[11px] font-bold tracking-wide leading-tight pr-4 text-white/90 drop-shadow-sm">{stock.name}</p>
-                          {isLow && (
-                              <span className="absolute top-0 right-0 flex h-2.5 w-2.5">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-200 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-                              </span>
-                          )}
+                      {/* Kanan: Badge & Qty */}
+                      <div className="flex items-center space-x-3">
+                        {isHabis ? (
+                          <div className="bg-white/20 py-0.5 px-2 rounded flex items-center border border-white/20">
+                            <AlertCircle className="w-3 h-3 text-rose-100 mr-1" />
+                            <span className="text-[9px] font-bold text-rose-50 uppercase tracking-wider">Habis</span>
+                          </div>
+                        ) : isKritis ? (
+                          // Label Kritis dengan warna Orange, tanpa mengubah background baris
+                          <div className="bg-amber-500/20 py-0.5 px-2 rounded flex items-center border border-amber-400/30">
+                            <AlertCircle className="w-3 h-3 text-amber-300 mr-1" />
+                            <span className="text-[9px] font-bold text-amber-300 uppercase tracking-wider">Kritis</span>
+                          </div>
+                        ) : (
+                          <div className="bg-emerald-900/40 py-0.5 px-2 rounded flex items-center border border-emerald-400/20">
+                            <span className="text-[9px] font-bold text-emerald-100 uppercase tracking-wider">Aman</span>
+                          </div>
+                        )}
+                        
+                        <p className="text-lg font-black drop-shadow-md tracking-tighter w-12 text-right">
+                            {stock.qty} <span className="text-[9px] font-medium opacity-75 tracking-normal">Pack</span>
+                        </p>
                       </div>
-                      
-                      <div className="relative z-10 flex items-end justify-between">
-                          <p className="text-3xl font-black drop-shadow-md tracking-tighter">
-                              {stock.qty} <span className="text-[10px] font-medium opacity-75 tracking-normal">Pack</span>
-                          </p>
-                          {isLow ? (
-                              <div className="bg-white/20 py-1 px-1.5 rounded-lg flex items-center border border-white/20">
-                                  <AlertCircle className="w-3 h-3 text-rose-100 mr-1" />
-                                  <span className="text-[8px] font-bold text-rose-50 uppercase tracking-wider">Kritis</span>
-                              </div>
-                          ) : (
-                              <div className="bg-emerald-900/30 py-1 px-2 rounded-lg flex items-center border border-emerald-400/20">
-                                  <span className="text-[8px] font-bold text-emerald-100 uppercase tracking-wider">Aman</span>
-                              </div>
-                          )}
-                      </div>
+
                     </div>
                   );
               })}
               
               {currentStocks.length === 0 && (
-                  <div className="col-span-2 p-5 rounded-2xl bg-white/5 border border-white/10 border-dashed text-center backdrop-blur-sm">
-                      <Package className="w-6 h-6 mx-auto mb-2 opacity-50 text-emerald-100" />
+                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 border-dashed text-center backdrop-blur-sm">
+                      <Package className="w-5 h-5 mx-auto mb-1 opacity-50 text-emerald-100" />
                       <p className="text-xs font-medium text-emerald-200">Belum ada data stok di freezer.</p>
                   </div>
               )}

@@ -36,9 +36,89 @@ export default function TransactionsPage() {
     if (trxRes.data) setTransactions(trxRes.data);
   };
 
+  // --- KONFIGURASI PAKET BUNDLING (HARGA KHUSUS) ---
+  const BUNDLES = [
+    {
+      name: "Paket Cicip (2 packs)",
+      items: [
+        { productName: "Pempek Isi 10 pcs", qty: 1, bundlePricePerPack: 18000 },
+        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 26000 }
+      ]
+    },
+    {
+      name: "Paket Keluarga (3 packs)",
+      items: [
+        { productName: "Pempek isi 20 pcs", qty: 1, bundlePricePerPack: 31000 }, 
+        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 17000 }, 
+        { productName: "Tekwan", qty: 1, bundlePricePerPack: 32000 }
+      ]
+    },
+    {
+      name: "Paket Istimewa (5 packs)",
+      items: [
+        { productName: "Pempek Isi 20 pcs", qty: 1, bundlePricePerPack: 32000 },
+        { productName: "Pempek Besar isi 10 pcs", qty: 1, bundlePricePerPack: 32000 },
+        { productName: "Tekwan", qty: 1, bundlePricePerPack: 32000 },
+        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 17000 },
+        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 18000 } 
+      ]
+    }
+  ];
+
   // --- FUNGSI DINAMIS UNTUK BARIS PRODUK ---
   const handleAddRow = () => {
     setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
+  };
+
+  // --- FUNGSI PENDETEKSI PINTAR (SMART MATCH) ---
+  const isSmartMatch = (bundleName: string, dbName: string) => {
+    // 1. Ubah semua jadi huruf kecil
+    let b = bundleName.toLowerCase();
+    let d = (dbName || '').toLowerCase();
+
+    // 2. Samakan simbol '+' dan '&' menjadi spasi biasa
+    b = b.replace(/\+/g, ' ').replace(/&/g, ' ');
+    d = d.replace(/\+/g, ' ').replace(/&/g, ' ');
+
+    // 3. Hapus kata-kata pengecoh (pcs, kecil, telur) dan rapikan spasi
+    b = b.replace(/pcs/g, '').replace(/kecil/g, '').replace(/isi telur/g, '').replace(/telur/g, '').replace(/\s+/g, ' ').trim();
+    d = d.replace(/pcs/g, '').replace(/kecil/g, '').replace(/isi telur/g, '').replace(/telur/g, '').replace(/\s+/g, ' ').trim();
+
+    // 4. ATURAN ANTI-BOCOR: Cegah "Pempek Isi 10" tertukar dengan "Pempek Besar"
+    if (b.includes('10') && !b.includes('besar') && d.includes('besar')) {
+        return false; 
+    }
+
+    // 5. Cek kecocokan: Pastikan setiap kata penting di Bundles ADA di Database
+    const words = b.split(' ');
+    return words.every(word => d.includes(word));
+  };
+
+  // --- FITUR TERAPKAN PAKET BUNDLING ---
+  const handleApplyBundle = (bundleName: string) => {
+    const selectedBundle = BUNDLES.find(b => b.name === bundleName);
+    if (!selectedBundle) return;
+
+    const newItems = selectedBundle.items.map((item, index) => {
+      const matchingBatch = availableBatches.find(b => isSmartMatch(item.productName, b.product_name));
+
+      return {
+        id: Date.now() + index,
+        batchId: matchingBatch ? matchingBatch.id : '',
+        qty: item.qty.toString(),
+        priceOption: 'custom', 
+        customPrice: item.bundlePricePerPack.toString()
+      };
+    });
+
+    setItems(newItems);
+    
+    // Peringatan otomatis kalau produknya kosong di freezer
+    if (newItems.some(item => item.batchId === '')) {
+       toast.error(`Ada produk di ${bundleName} yang stoknya habis/tidak ditemukan!`);
+    } else {
+       toast.success(`${bundleName} Berhasil Diterapkan!`);
+    }
   };
 
   const handleRemoveRow = (id: number) => {
@@ -75,8 +155,12 @@ export default function TransactionsPage() {
     return totalIn - totalOut;
   };
 
-  // Buat daftar dropdown yang stoknya masih > 0
-  const availableBatches = batches.filter(b => getRemainingStock(b.id) > 0);
+  // Buat daftar dropdown yang stoknya masih > 0 DAN belum di-archive
+  const availableBatches = batches.filter(b => {
+    const status = (b.status || '').toLowerCase();
+    const isArchived = b.is_archived === true || status.includes('archive');
+    return getRemainingStock(b.id) > 0 && !isArchived;
+  });
 
   // --- HITUNGAN TOTAL TAGIHAN ---
   const calculateGrandTotal = () => {
@@ -320,6 +404,28 @@ export default function TransactionsPage() {
                 <button type="button" onClick={handleAddRow} className="flex items-center text-xs bg-emerald-100 text-emerald-700 font-bold px-3 py-1.5 rounded-lg hover:bg-emerald-200 transition">
                     <Plus className="w-4 h-4 mr-1" /> Tambah Varian
                 </button>
+            </div>
+
+            {/* --- FITUR PILIH PAKET BUNDLING --- */}
+            <div className="grid grid-cols-1 gap-2 mb-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cepat: Pilih Paket Bundling</p>
+                <div className="flex flex-wrap gap-2">
+                    {BUNDLES.map((bundle, i) => {
+                        // Logika hitung hemat untuk ditampilkan di tombol
+                        const hemat = bundle.name.includes("Keluarga") ? "10rb" : bundle.name.includes("Hemat") ? "4rb" : "14rb";
+                        return (
+                            <button 
+                                key={i}
+                                type="button" 
+                                onClick={() => handleApplyBundle(bundle.name)}
+                                className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-3 py-2 rounded-xl hover:bg-amber-100 transition shadow-sm flex flex-col items-center"
+                            >
+                                <span>🎁 {bundle.name}</span>
+                                <span className="text-[8px] text-amber-600 opacity-80">Hemat Rp{hemat}</span>
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {items.map((item, index) => {
