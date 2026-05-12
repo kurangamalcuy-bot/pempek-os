@@ -60,7 +60,7 @@ export default function TransactionsPage() {
         { productName: "Pempek Besar isi 10 pcs", qty: 1, bundlePricePerPack: 32000 },
         { productName: "Tekwan", qty: 1, bundlePricePerPack: 32000 },
         { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 17000 },
-        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 18000 } 
+        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 26000 } 
       ]
     }
   ];
