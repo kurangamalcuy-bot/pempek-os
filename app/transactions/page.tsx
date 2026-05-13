@@ -13,6 +13,8 @@ export default function TransactionsPage() {
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [generatedImage, setGeneratedImage] = useState('');
 
   // --- STATE UNTUK MODAL STRUK PNG ---
   const [showPrintModal, setShowPrintModal] = useState(false);
@@ -111,7 +113,8 @@ export default function TransactionsPage() {
       const matchingBatch = availableBatches.find(b => isSmartMatch(item.productName, b.product_name));
 
       return {
-        id: Date.now() + index,
+        // Tambahkan Math.random() agar ID selalu unik walau diklik beruntun dengan cepat
+        id: Date.now() + Math.floor(Math.random() * 1000) + index,
         batchId: matchingBatch ? matchingBatch.id : '',
         qty: item.qty.toString(),
         priceOption: 'custom', 
@@ -119,13 +122,19 @@ export default function TransactionsPage() {
       };
     });
 
-    setItems(newItems);
+    // PERBAIKAN: Sistem "Add", bukan menimpa
+    setItems(prevItems => {
+      // Saring dulu baris kosong (jika ada baris yang belum diisi produk sama sekali, kita buang)
+      const existingItems = prevItems.filter(item => item.batchId !== '');
+      // Gabungkan list yang sudah ada dengan paket yang baru diklik
+      return [...existingItems, ...newItems];
+    });
     
     // Peringatan otomatis kalau produknya kosong di freezer
     if (newItems.some(item => item.batchId === '')) {
        toast.error(`Ada produk di ${bundleName} yang stoknya habis/tidak ditemukan!`);
     } else {
-       toast.success(`${bundleName} Berhasil Diterapkan!`);
+       toast.success(`${bundleName} Berhasil Ditambahkan!`);
     }
   };
 
@@ -325,6 +334,25 @@ export default function TransactionsPage() {
     }
   };
 
+  // FUNGSI HAPUS SATU NOTA SEKALIGUS (SEMUA BARANG)
+  const handleDeleteGroup = async (items: any[]) => {
+    // Meminta konfirmasi agar tidak tidak sengaja terhapus
+    if (!window.confirm("Yakin ingin menghapus SELURUH pesanan pada nota ini?")) return;
+    
+    // Kumpulkan semua ID barang yang ada di nota tersebut
+    const ids = items.map(item => item.id);
+    
+    // Hapus massal di database Supabase
+    const { error } = await supabase.from('transactions').delete().in('id', ids);
+    
+    if (!error) {
+      toast.success("Seluruh nota berhasil dihapus!");
+      fetchData();
+    } else {
+      toast.error("Gagal menghapus nota.");
+    }
+  };
+
   // --- TARUH DI SINI (ANTARA handleSubmit DAN handleLunas) ---
 
   // FUNGSI UNTUK MEMUAT DATA KE FORM (EDIT)
@@ -380,7 +408,7 @@ export default function TransactionsPage() {
     c.customer_name.toLowerCase().includes(name.toLowerCase())
   );
 
-  // --- FUNGSI DOWNLOAD STRUK PNG ---
+  // --- FUNGSI DOWNLOAD STRUK PNG (VERSI POP-UP PREVIEW) ---
   const handleDownloadReceipt = async () => {
     const node = document.getElementById('receipt-template');
     if (!node) return;
@@ -388,15 +416,17 @@ export default function TransactionsPage() {
     setLoading(true);
     const idToast = toast.loading('Sedang membuat struk profesional...');
     try {
+      // 1. Ubah desain rahasia jadi gambar tajam (pixelRatio: 3)
       const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3 });
-      const link = document.createElement('a');
-      link.download = `Struk-${currentReceipt.customer_name}.png`;
-      link.href = dataUrl;
-      link.click();
-      setShowPrintModal(false);
-      toast.success('Struk berhasil di-download!', { id: idToast });
       
-      // Reset isian setelah download
+      // 2. Simpan gambarnya dan munculkan pop-up
+      setGeneratedImage(dataUrl);
+      setShowImageModal(true);  // Buka layar gelap popup gambar
+      setShowPrintModal(false); // Tutup layar settingan ongkir
+
+      toast.success('Gambar struk siap disalin!', { id: idToast });
+      
+      // 3. Reset isian biaya tambahan
       setOngkir(0);
       setPackingFee(0);
       setCustomOngkir('');
@@ -772,15 +802,25 @@ export default function TransactionsPage() {
                         <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
                             <div>
                                 <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
-                                <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2">
-                                    {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2.5">
+                                    {new Date(group.key).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                 </p>
-                                <button 
-                                    onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
-                                    className="flex items-center text-[10px] font-black bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-200 transition"
-                                >
-                                    <Printer className="w-3.5 h-3.5 mr-1.5" /> CETAK STRUK
-                                </button>
+                                
+                                {/* Tombol Jejer Dua (Cetak & Hapus Semua) */}
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
+                                        className="flex items-center text-[9px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-100 transition border border-emerald-100"
+                                    >
+                                        <Printer className="w-3 h-3 mr-1" /> CETAK
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteGroup(group.items)}
+                                        className="flex items-center text-[9px] font-black bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-rose-100 transition border border-rose-100"
+                                    >
+                                        <Trash2 className="w-3 h-3 mr-1" /> HAPUS SEMUA
+                                    </button>
+                                </div>
                             </div>
                             <div className="text-right">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Belanja</p>
@@ -861,7 +901,14 @@ export default function TransactionsPage() {
                 {/* Header Struk & Logo */}
                 <div className="text-center mb-6">
                   <div className="flex justify-center mb-3">
-                    <img src="/logo-umiwa.jpg" alt="Logo Pempek Umiwa" className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover shadow-sm" />
+                    <img 
+                      src="/logo-umiwa.jpg" 
+                      alt="Logo Pempek Umiwa" 
+                      loading="eager" 
+                      decoding="sync" 
+                      crossOrigin="anonymous"
+                      className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover shadow-sm" 
+                    />
                   </div>
                   <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-0.5">PEMPEK UMIWA</h1>
                   <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase mb-2">Frozen Food Pempek Asli Ikan Tenggiri 100%</p>
@@ -872,16 +919,12 @@ export default function TransactionsPage() {
                   </p>
                 </div>
 
-                {/* Info Pelanggan */}
-                <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 flex justify-between items-center">
-                    <div className="text-left">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pelanggan</p>
-                        <p className="text-sm font-black text-slate-800">{currentReceipt?.customer_name}</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal & Waktu</p>
+                {/* Info Tanggal & Waktu (Tanpa Nama Pelanggan) */}
+                <div className="bg-slate-50 rounded-xl p-3 mb-6 border border-slate-100 flex justify-center items-center text-center">
+                    <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Waktu Transaksi</p>
                         <p className="text-[11px] font-bold text-slate-700">
-                            {new Date(currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} - {new Date(currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} - {new Date(currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                         </p>
                     </div>
                 </div>
@@ -938,6 +981,48 @@ export default function TransactionsPage() {
                 </div>
                 
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL PREVIEW GAMBAR STRUK (TAMPIL FULL SCREEN DI HP/WEB) */}
+        {/* ========================================================= */}
+        {showImageModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-5 animate-in fade-in duration-300">
+            <div className="relative w-full max-w-sm flex flex-col items-center">
+
+              {/* Tombol Silang Buat Tutup (Pojok Kanan Atas) */}
+              <button
+                onClick={() => setShowImageModal(false)}
+                className="absolute -top-12 right-0 bg-white/20 text-white p-2.5 rounded-full hover:bg-white/40 transition-colors active:scale-90"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Hasil Gambar Struknya */}
+              <div className="bg-white p-2 rounded-[24px] shadow-[0_0_40px_rgba(0,0,0,0.5)] mb-6 w-full flex justify-center border border-slate-200/20">
+                <img
+                  src={generatedImage}
+                  alt="Struk Pempek Umiwa"
+                  className="max-h-[60vh] w-auto rounded-[16px] object-contain"
+                />
+              </div>
+
+              {/* Teks Arahan Untuk User (Warna Hijau) */}
+              <div className="text-center w-full">
+                <div className="bg-emerald-500/20 border border-emerald-500/40 rounded-3xl p-5 inline-block w-full backdrop-blur-sm">
+                   <p className="text-white text-sm font-black flex items-center justify-center mb-2.5 tracking-wide">
+                     <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-2" />
+                     STRUK SIAP DIKIRIM
+                   </p>
+                   <p className="text-slate-300 text-[11px] leading-relaxed font-medium">
+                     <b className="text-emerald-300 text-xs">Tekan & Tahan</b> (Long Press) pada gambar struk di atas.<br/><br/>
+                     Lalu pilih <b className="text-white">"Copy Image"</b> atau <b className="text-white">"Download Image"</b> untuk di-paste langsung ke chat pelanggan.
+                   </p>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
