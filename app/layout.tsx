@@ -3,6 +3,9 @@ import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import { Toaster } from 'react-hot-toast';
 
+// 1. TAMBAHKAN IMPORT PINGATE DI SINI
+import PinGate from "@/components/PinGate";
+
 export const metadata: Metadata = {
   title: "Pempek OS",
   description: "Operating System for Pempek Business",
@@ -18,11 +21,18 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode; }) {
   return (
     <html lang="id" suppressHydrationWarning>
-      {/* Tambahkan suppressHydrationWarning juga di body */}
       <body className="bg-slate-200 text-slate-800" suppressHydrationWarning>
         <div className="w-full max-w-md mx-auto bg-slate-50 min-h-screen relative shadow-2xl overflow-x-hidden">
-          {children}
-          <BottomNav />
+          
+          {/* Memanggil Toaster agar notifikasi sukses/gagal bisa muncul */}
+          <Toaster position="top-center" />
+
+          {/* 2. BUNGKUS ISI WEB DENGAN PINGATE */}
+          <PinGate>
+            {children}
+            <BottomNav />
+          </PinGate>
+
         </div>
       </body>
     </html>
