@@ -863,8 +863,13 @@ export default function TransactionsPage() {
                   <div className="flex justify-center mb-3">
                     <img src="/logo-umiwa.jpg" alt="Logo Pempek Umiwa" className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover shadow-sm" />
                   </div>
-                  <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-1">PEMPEK UMIWA</h1>
-                  <p className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">Pusat Pempek Frozen Bengkulu</p>
+                  <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-0.5">PEMPEK UMIWA</h1>
+                  <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase mb-2">Frozen Food Pempek Asli Ikan Tenggiri 100%</p>
+                  
+                  {/* Alamat Tanpa Kotak (Langsung di atas background putih) */}
+                  <p className="text-[9px] font-bold text-slate-400 leading-relaxed max-w-[300px] mx-auto uppercase tracking-tight">
+                    Jl Warga Bhakti No.18, RT.02, RW.11, Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi, 40532
+                  </p>
                 </div>
 
                 {/* Info Pelanggan */}
@@ -928,7 +933,8 @@ export default function TransactionsPage() {
                 {/* Footer Pesan Manis */}
                 <div className="text-center mt-10 pt-6 border-t border-slate-100">
                   <p className="text-xs font-black text-emerald-600 mb-1.5 italic">"Terima kasih sudah berbelanja!"</p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Instagram: @pempek_os</p>
+                  <p className="text-[9px] font-bold text-slate-400 tracking-widest">Instagram: @pempekumiwa</p>
+                  <p className="text-[9px] font-bold text-slate-400 tracking-widest">Whatsapp: 0877-8847-2837</p>
                 </div>
                 
               </div>
