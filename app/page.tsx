@@ -244,35 +244,6 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
-
-        <section>
-          <h3 className="font-bold text-slate-700 mb-3">Penjualan Terakhir</h3>
-          <div className="space-y-3">
-            {transactions.slice(0, 5).map((trx) => (
-              <div key={trx.id} className="p-4 border border-slate-100 rounded-2xl bg-white shadow-sm">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{trx.customer_name}</p>
-                    <p className="text-[10px] text-slate-500 font-bold mt-1">
-                      {trx.qty}x {trx.product_name}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-emerald-600">{formatIDR(trx.qty * trx.selling_price)}</p>
-                  </div>
-                </div>
-                <div className="flex justify-end space-x-2 border-t border-slate-100 pt-3">
-                   <button onClick={() => handleDelete(trx.id)} className="flex items-center justify-center space-x-1 text-[10px] bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-100 font-bold transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" /> <span>Hapus</span>
-                  </button>
-                  <button onClick={() => generatePDF(trx)} className="flex items-center justify-center space-x-1 text-[10px] bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 font-bold transition-colors">
-                    <Printer className="w-3.5 h-3.5" /> <span>Cetak Struk</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       </main>
     </div>
   );

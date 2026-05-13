@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save } from 'lucide-react';
+import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save, Printer, Download, X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import * as htmlToImage from 'html-to-image';
 
 export default function TransactionsPage() {
   const [loading, setLoading] = useState(false);
@@ -12,6 +13,13 @@ export default function TransactionsPage() {
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [editingId, setEditingId] = useState<number | null>(null);
+
+  // --- STATE UNTUK MODAL STRUK PNG ---
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [currentReceipt, setCurrentReceipt] = useState<any>(null);
+  const [ongkir, setOngkir] = useState(0);
+  const [packingFee, setPackingFee] = useState(0);
+  const [customOngkir, setCustomOngkir] = useState('');
 
   // --- FORM STATE BARU (SISTEM MULTI-BARIS) ---
   const [name, setName] = useState('');
@@ -371,6 +379,33 @@ export default function TransactionsPage() {
   const filteredCustomers = uniqueCustomers.filter((c: any) => 
     c.customer_name.toLowerCase().includes(name.toLowerCase())
   );
+
+  // --- FUNGSI DOWNLOAD STRUK PNG ---
+  const handleDownloadReceipt = async () => {
+    const node = document.getElementById('receipt-template');
+    if (!node) return;
+
+    setLoading(true);
+    const idToast = toast.loading('Sedang membuat struk profesional...');
+    try {
+      const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3 });
+      const link = document.createElement('a');
+      link.download = `Struk-${currentReceipt.customer_name}.png`;
+      link.href = dataUrl;
+      link.click();
+      setShowPrintModal(false);
+      toast.success('Struk berhasil di-download!', { id: idToast });
+      
+      // Reset isian setelah download
+      setOngkir(0);
+      setPackingFee(0);
+      setCustomOngkir('');
+    } catch (err) {
+      toast.error('Gagal membuat gambar struk', { id: idToast });
+    } finally {
+      setLoading(false);
+    }
+  };
   
   return (
     <div className="font-sans pb-48">
@@ -737,9 +772,15 @@ export default function TransactionsPage() {
                         <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
                             <div>
                                 <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
-                                <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono">
+                                <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2">
                                     {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                 </p>
+                                <button 
+                                    onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
+                                    className="flex items-center text-[10px] font-black bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-200 transition"
+                                >
+                                    <Printer className="w-3.5 h-3.5 mr-1.5" /> CETAK STRUK
+                                </button>
                             </div>
                             <div className="text-right">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Belanja</p>
@@ -772,6 +813,128 @@ export default function TransactionsPage() {
             })()}
           </div>
         </section>
+        {/* --- MODAL INPUT BIAYA & DESAIN STRUK TERSEMBUNYI --- */}
+        {showPrintModal && (
+          <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in fade-in zoom-in-95">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="font-black text-slate-800 text-lg">Biaya Tambahan</h2>
+                <button onClick={() => setShowPrintModal(false)} className="p-2 bg-slate-100 rounded-full hover:bg-rose-100 hover:text-rose-600 transition"><X className="w-4 h-4"/></button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Pilihan Ongkir */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Biaya Ongkir</label>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    {[0, 10000].map(val => (
+                      <button key={val} onClick={() => {setOngkir(val); setCustomOngkir('')}} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === val && !customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        {val === 0 ? 'Gratis' : '10 Ribu'}
+                      </button>
+                    ))}
+                    <button onClick={() => setOngkir(-1)} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === -1 || customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Manual</button>
+                  </div>
+                  {(ongkir === -1 || customOngkir !== '') && (
+                    <div className="animate-in fade-in zoom-in-95">
+                       <input type="number" value={customOngkir} onChange={(e) => setCustomOngkir(e.target.value)} placeholder="Ketik nominal ongkir (Rp)..." className="w-full p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl text-sm font-bold text-emerald-900 outline-none focus:border-emerald-500 placeholder-emerald-300" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Packing Fee */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Biaya Packing (Opsional)</label>
+                  <input type="number" value={packingFee || ''} onChange={(e) => setPackingFee(Number(e.target.value))} placeholder="Ketik nominal packing (Rp)..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 placeholder-slate-300" />
+                </div>
+
+                <button onClick={handleDownloadReceipt} disabled={loading} className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center shadow-lg active:scale-95 transition hover:bg-slate-800">
+                  <Download className="w-4 h-4 mr-2" /> {loading ? 'MEMPROSES...' : 'DOWNLOAD STRUK PNG'}
+                </button>
+              </div>
+            </div>
+
+            {/* TEMPLATE STRUK (KITA SEMBUNYIKAN DI LUAR LAYAR) */}
+            {/* Template ini yang akan 'difoto' oleh sistem menjadi PNG */}
+            <div className="fixed left-[-9999px] top-0">
+              <div id="receipt-template" className="bg-white w-[420px] p-8" style={{ fontFamily: 'sans-serif' }}>
+                
+                {/* Header Struk & Logo */}
+                <div className="text-center mb-6">
+                  <div className="flex justify-center mb-3">
+                    <img src="/logo-umiwa.jpg" alt="Logo Pempek Umiwa" className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover shadow-sm" />
+                  </div>
+                  <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-1">PEMPEK UMIWA</h1>
+                  <p className="text-[11px] font-bold text-slate-400 tracking-widest uppercase">Pusat Pempek Frozen Bengkulu</p>
+                </div>
+
+                {/* Info Pelanggan */}
+                <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 flex justify-between items-center">
+                    <div className="text-left">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pelanggan</p>
+                        <p className="text-sm font-black text-slate-800">{currentReceipt?.customer_name}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal & Waktu</p>
+                        <p className="text-[11px] font-bold text-slate-700">
+                            {new Date(currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} - {new Date(currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Daftar Belanjaan */}
+                <div className="mb-6">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-3">Pesanan</p>
+                  <div className="space-y-4">
+                    {currentReceipt?.items.map((t: any, i: number) => (
+                      <div key={i} className="flex justify-between items-start">
+                        <div className="max-w-[240px]">
+                          <p className="text-[13px] font-black text-slate-800 leading-snug">{t.product_name}</p>
+                          <p className="text-[11px] font-bold text-slate-500 mt-0.5">{t.qty} x {formatIDR(t.selling_price)}</p>
+                        </div>
+                        <p className="text-sm font-black text-slate-800 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Rincian Biaya & Total */}
+                <div className="border-t-[2px] border-dashed border-slate-200 pt-4 space-y-2.5">
+                  <div className="flex justify-between text-xs font-bold text-slate-500">
+                    <span>Subtotal Belanja</span>
+                    <span>{formatIDR(currentReceipt?.total || 0)}</span>
+                  </div>
+                  {(Number(customOngkir) > 0 || ongkir > 0) && (
+                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>Ongkos Kirim</span>
+                      <span>{formatIDR(Number(customOngkir) || (ongkir === -1 ? 0 : ongkir))}</span>
+                    </div>
+                  )}
+                  {packingFee > 0 && (
+                    <div className="flex justify-between text-xs font-bold text-slate-500">
+                      <span>Biaya Packing Tambahan</span>
+                      <span>{formatIDR(packingFee)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Grand Total */}
+                  <div className="flex justify-between items-end pt-3 mt-3 border-t-[3px] border-emerald-600">
+                    <span className="text-[11px] font-black text-emerald-800 uppercase tracking-widest mb-1">Total Tagihan</span>
+                    <span className="text-2xl font-black text-emerald-600 tracking-tight">
+                        {formatIDR((currentReceipt?.total || 0) + (Number(customOngkir) || (ongkir === -1 ? 0 : ongkir)) + packingFee)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer Pesan Manis */}
+                <div className="text-center mt-10 pt-6 border-t border-slate-100">
+                  <p className="text-xs font-black text-emerald-600 mb-1.5 italic">"Terima kasih sudah berbelanja!"</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Instagram: @pempek_os</p>
+                </div>
+                
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
