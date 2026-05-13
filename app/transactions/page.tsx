@@ -408,29 +408,33 @@ export default function TransactionsPage() {
     c.customer_name.toLowerCase().includes(name.toLowerCase())
   );
 
-  // --- FUNGSI DOWNLOAD STRUK PNG (VERSI POP-UP PREVIEW) ---
+  // --- FUNGSI DOWNLOAD STRUK PNG (VERSI POP-UP PREVIEW ANTI HILANG LOGO) ---
   const handleDownloadReceipt = async () => {
     const node = document.getElementById('receipt-template');
     if (!node) return;
 
     setLoading(true);
-    const idToast = toast.loading('Sedang membuat struk profesional...');
+    const idToast = toast.loading('Sedang menyiapkan logo & struk...');
     try {
-      // 1. Ubah desain rahasia jadi gambar tajam (pixelRatio: 3)
-      const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3 });
+      // 1. TRIK KHUSUS HP: Lakukan "foto bohongan" pertama kali untuk memancing logo agar ke-load (Pre-load)
+      await htmlToImage.toPng(node, { cacheBust: true }); 
       
-      // 2. Simpan gambarnya dan munculkan pop-up
+      // 2. Foto kedua (yang asli dan tajam)
+      const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3, cacheBust: true });
+      
+      // 3. Simpan gambarnya dan munculkan pop-up
       setGeneratedImage(dataUrl);
       setShowImageModal(true);  // Buka layar gelap popup gambar
       setShowPrintModal(false); // Tutup layar settingan ongkir
 
       toast.success('Gambar struk siap disalin!', { id: idToast });
       
-      // 3. Reset isian biaya tambahan
+      // 4. Reset isian biaya tambahan
       setOngkir(0);
       setPackingFee(0);
       setCustomOngkir('');
     } catch (err) {
+      console.error(err);
       toast.error('Gagal membuat gambar struk', { id: idToast });
     } finally {
       setLoading(false);
