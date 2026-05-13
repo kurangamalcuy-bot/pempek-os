@@ -911,7 +911,7 @@ export default function TransactionsPage() {
                       loading="eager" 
                       decoding="sync" 
                       crossOrigin="anonymous"
-                      className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover shadow-sm" 
+                      className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover" 
                     />
                   </div>
                   <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-0.5">PEMPEK UMIWA</h1>
