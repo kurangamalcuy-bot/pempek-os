@@ -155,12 +155,34 @@ export default function TransactionsPage() {
     return totalIn - totalOut;
   };
 
-  // Buat daftar dropdown yang stoknya masih > 0 DAN belum di-archive
-  const availableBatches = batches.filter(b => {
+  // --- LOGIKA BARU DROPDOWN ANTI DUPLIKAT ---
+  const uniqueProductsMap = new Map();
+
+  batches.forEach(b => {
+    const rawName = b.product_name || 'Pempek Campur';
+    const key = rawName.trim().toLowerCase();
+    
+    // Jika produk belum masuk ke map, tambahkan
+    if (!uniqueProductsMap.has(key)) {
+       uniqueProductsMap.set(key, {
+          id: b.id, // ID perwakilan untuk database
+          product_name: rawName,
+          isArchived: true, // Set default true, nanti dicek lagi
+          stock: getRemainingStock(b.id) // Hitung total sisa stok
+       });
+    }
+    
+    // Jika ada 1 saja batch dari produk ini yang belum diarsip, ubah statusnya jadi aktif
     const status = (b.status || '').toLowerCase();
-    const isArchived = b.is_archived === true || status.includes('archive');
-    return getRemainingStock(b.id) > 0 && !isArchived;
+    if (b.is_archived !== true && !status.includes('archive')) {
+       uniqueProductsMap.get(key).isArchived = false;
+    }
   });
+
+  // Buat daftar akhir: Hilangkan yang isArchived = true
+  // Produk dengan stok 0 (habis) tetap lolos filter ini asalkan tidak diarsip
+  const availableBatches = Array.from(uniqueProductsMap.values())
+    .filter(product => product.isArchived === false);
 
   // --- HITUNGAN TOTAL TAGIHAN ---
   const calculateGrandTotal = () => {
@@ -469,7 +491,13 @@ export default function TransactionsPage() {
                                 >
                                     <option value="" disabled>👉 Ketuk untuk Pilih Produk...</option>
                                     {availableBatches.map(b => (
-                                        <option key={b.id} value={b.id}>{b.product_name} (Sisa: {getRemainingStock(b.id)})</option>
+                                        <option 
+                                            key={b.id} 
+                                            value={b.id} 
+                                            disabled={b.stock <= 0} // GABISA DIKLIK JIKA STOK 0 ATAU MINUS
+                                        >
+                                            {b.product_name} {b.stock <= 0 ? '- HABIS' : `(Sisa: ${b.stock})`}
+                                        </option>
                                     ))}
                                 </select>
                                 {/* Ikon Panah Dropdown Kustom */}
