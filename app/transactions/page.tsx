@@ -923,12 +923,21 @@ export default function TransactionsPage() {
                   </p>
                 </div>
 
-                {/* Info Tanggal & Waktu (Tanpa Nama Pelanggan) */}
-                <div className="bg-slate-50 rounded-xl p-3 mb-6 border border-slate-100 flex justify-center items-center text-center">
-                    <div>
+                {/* Info Pelanggan & Waktu Transaksi */}
+                <div className="bg-slate-50 rounded-xl p-3.5 mb-6 border border-slate-100 flex justify-between items-center">
+                    <div className="text-left flex-1">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pelanggan</p>
+                        <p className="text-[13px] font-black text-emerald-700 uppercase truncate leading-tight pr-2">
+                            {currentReceipt?.customer_name || currentReceipt?.items?.[0]?.customer_name || 'Hamba Allah'}
+                        </p>
+                    </div>
+                    <div className="text-right border-l border-slate-200 pl-3">
                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Waktu Transaksi</p>
-                        <p className="text-[11px] font-bold text-slate-700">
-                            {new Date(currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} - {new Date(currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                        <p className="text-[10px] font-bold text-slate-700">
+                            {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </p>
+                        <p className="text-[9px] font-bold text-slate-500 mt-0.5">
+                            {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                         </p>
                     </div>
                 </div>
