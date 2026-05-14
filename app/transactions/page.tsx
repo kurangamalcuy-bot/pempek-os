@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save, Printer, Download, X } from 'lucide-react';
+import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save, Printer, Download, X, Edit3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as htmlToImage from 'html-to-image';
 
@@ -22,6 +22,11 @@ export default function TransactionsPage() {
   const [ongkir, setOngkir] = useState(0);
   const [packingFee, setPackingFee] = useState(0);
   const [customOngkir, setCustomOngkir] = useState('');
+  // TAMBAHKAN KODE INI TEPAT DI BAWAHNYA:
+  // --- STATE UNTUK MODAL EDIT NAMA ---
+  const [isEditNameModalOpen, setIsEditNameModalOpen] = useState(false);
+  const [editNameData, setEditNameData] = useState<{ currentName: string, items: any[] }>({ currentName: '', items: [] });
+  const [newCustomerName, setNewCustomerName] = useState('');
 
   // --- FORM STATE BARU (SISTEM MULTI-BARIS) ---
   const [name, setName] = useState('');
@@ -350,6 +355,40 @@ export default function TransactionsPage() {
       fetchData();
     } else {
       toast.error("Gagal menghapus nota.");
+    }
+  };
+
+  // TAMBAHKAN KODE INI TEPAT DI BAWAH FUNGSI DI ATAS:
+  // BUKA POP-UP EDIT NAMA
+  const handleEditGroupName = (items: any[], currentName: string) => {
+    setEditNameData({ currentName, items });
+    setNewCustomerName(currentName);
+    setIsEditNameModalOpen(true);
+  };
+
+  // EKSEKUSI SIMPAN NAMA BARU KE DATABASE
+  const submitNewGroupName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCustomerName || newCustomerName.trim() === "" || newCustomerName === editNameData.currentName) {
+        setIsEditNameModalOpen(false);
+        return;
+    }
+
+    setLoading(true);
+    try {
+        await Promise.all(editNameData.items.map((t: any) => 
+            supabase.from('transactions')
+                .update({ customer_name: newCustomerName.trim() })
+                .eq('id', t.id)
+        ));
+        toast.success(`Nama berhasil diganti menjadi ${newCustomerName.trim()}!`);
+        fetchData();
+    } catch (error) {
+        console.error(error);
+        toast.error("Gagal mengganti nama pelanggan.");
+    } finally {
+        setLoading(false);
+        setIsEditNameModalOpen(false);
     }
   };
 
@@ -802,10 +841,22 @@ export default function TransactionsPage() {
                 return groupedHistory.map((group: any) => (
                     <div key={group.key} className="p-4 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_15px_-5px_rgba(0,0,0,0.05)] relative overflow-hidden">
                         
+                        {/* GANTI MENJADI SEPERTI INI: */}
                         {/* Header Nota */}
                         <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
                             <div>
-                                <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
+                                    {/* Tombol Pensil untuk Edit Nama */}
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleEditGroupName(group.items, group.customer_name)}
+                                        className="text-slate-400 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 p-1.5 rounded-lg transition-all active:scale-95"
+                                        title="Ganti Nama Pelanggan"
+                                    >
+                                        <Edit3 className="w-3 h-3" />
+                                    </button>
+                                </div>
                                 <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2.5">
                                     {new Date(group.key).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                 </p>
@@ -1035,9 +1086,55 @@ export default function TransactionsPage() {
                    </p>
                 </div>
               </div>
-
             </div>
           </div>
+        )}
+        {/* --- MODAL POP-UP GANTI NAMA (PASTE DI SINI, DI ATAS </main>) --- */}
+        {isEditNameModalOpen && (
+            <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="p-5 border-b border-slate-100 bg-slate-50/50">
+                        <h3 className="font-black text-slate-800 text-lg">Ganti Nama Pelanggan</h3>
+                        <p className="text-xs text-slate-500 font-medium mt-1">
+                            Ubah nama dari <span className="font-bold text-rose-500">"{editNameData.currentName}"</span>
+                        </p>
+                    </div>
+                    
+                    <form onSubmit={submitNewGroupName} className="p-5 space-y-5">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                                Nama Baru
+                            </label>
+                            <input 
+                                type="text" 
+                                autoFocus
+                                required
+                                value={newCustomerName}
+                                onChange={(e) => setNewCustomerName(e.target.value)}
+                                placeholder="Ketik nama baru di sini..."
+                                className="w-full p-3.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-800 font-bold text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 transition-all"
+                            />
+                        </div>
+                        
+                        <div className="flex gap-3 pt-2">
+                            <button 
+                                type="button" 
+                                onClick={() => setIsEditNameModalOpen(false)}
+                                className="flex-1 p-3.5 text-slate-500 bg-slate-100 font-bold text-xs rounded-xl hover:bg-slate-200 transition active:scale-95"
+                            >
+                                BATAL
+                            </button>
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className={`flex-1 p-3.5 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 ${loading ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/30'}`}
+                            >
+                                {loading ? 'MENYIMPAN...' : 'SIMPAN NAMA'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         )}
       </main>
     </div>
