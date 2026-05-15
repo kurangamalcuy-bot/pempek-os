@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save, Printer, Download, X, Edit3 } from 'lucide-react';
+import { Megaphone, Store, Smartphone, AlertCircle, CheckCircle2, Calendar, Plus, Trash2, Save, Printer, Download, X, Edit3, MapPin, Package, QrCode, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as htmlToImage from 'html-to-image';
 
@@ -28,9 +28,69 @@ export default function TransactionsPage() {
   const [editNameData, setEditNameData] = useState<{ currentName: string, items: any[] }>({ currentName: '', items: [] });
   const [newCustomerName, setNewCustomerName] = useState('');
 
+  // --- STATE UNTUK MODAL RESI PENGIRIMAN ---
+  const [showResiModal, setShowResiModal] = useState(false);
+  const [currentResi, setCurrentResi] = useState<any>(null);
+  const [isManualAddress, setIsManualAddress] = useState(false); // Deteksi mode manual
+  
+  const [resiForm, setResiForm] = useState({
+      name: '', phone: '', detailAddress: '', city: '', district: '', subdistrict: '', postalCode: '', courier: 'AHSAN XPRESS', customCourier: ''
+  });
+
+  // DATA LENGKAP BANDUNG RAYA (KOTA BANDUNG, KAB BANDUNG, KBB, CIMAHI)
+  const ADDRESS_DATA: any = {
+      "Kota Cimahi": {
+          "Cimahi Selatan": { "Cibeber": "40531", "Leuwigajah": "40532", "Utama": "40533", "Melong": "40534", "Cibeureum": "40535" },
+          "Cimahi Tengah": { "Baros": "40521", "Cigugur Tengah": "40522", "Karangmekar": "40523", "Setiamanah": "40524", "Cimahi": "40525", "Padasuka": "40526" },
+          "Cimahi Utara": { "Cipageran": "40511", "Citeureup": "40512", "Cibabat": "40513", "Pasirkaliki": "40514" }
+      },
+      "Kota Bandung": {
+          "Andir": { "Campaka": "40184", "Ciroyom": "40182", "Garuda": "40184", "Maleber": "40184" },
+          "Antapani": { "Antapani Kidul": "40291", "Antapani Kulon": "40291", "Antapani Tengah": "40291" },
+          "Arcamanik": { "Cisaranten Endah": "40292", "Cisaranten Kulon": "40293", "Sukamiskin": "40293" },
+          "Astana Anyar": { "Cibadak": "40241", "Karanganyar": "40241", "Nyengseret": "40242", "Panjunan": "40242" },
+          "Babakan Ciparay": { "Babakan": "40222", "Babakanciparay": "40223", "Margahayu Utara": "40224" },
+          "Bandung Kidul": { "Batununggal": "40266", "Mengger": "40267", "Wates": "40256" },
+          "Bandung Kulon": { "Caringin": "40212", "Cibuntu": "40212", "Cijerah": "40213", "Gempolsari": "40215" },
+          "Bandung Wetan": { "Cihapit": "40114", "Citarum": "40115", "Tamansari": "40116" },
+          "Batununggal": { "Binong": "40275", "Cibangkong": "40273", "Gumuruh": "40275", "Maleer": "40274" },
+          "Bojongloa Kaler": { "Jamika": "40231", "Kopo": "40233", "Suka Asih": "40233" },
+          "Bojongloa Kidul": { "Cibaduyut": "40236", "Cibaduyut Kidul": "40239", "Mekarwangi": "40237" },
+          "Buahbatu": { "Cijawura": "40287", "Jatisari": "40286", "Margasari": "40286", "Sekejati": "40286" },
+          "Cibeunying Kaler": { "Cigadung": "40191", "Cihaurgeulis": "40122", "Sukaluyu": "40123" },
+          "Cibeunying Kidul": { "Cicadas": "40121", "Cikutra": "40124", "Padasuka": "40125", "Pasirlayung": "40192" },
+          "Cicendo": { "Arjuna": "40172", "Husen Sastranegara": "40174", "Pajajaran": "40173", "Pasirkaliki": "40171" },
+          "Cidadap": { "Ciumbuleuit": "40142", "Hegarmanah": "40141", "Ledeng": "40143" },
+          "Coblong": { "Cipaganti": "40131", "Dago": "40135", "Lebakgede": "40132", "Sadangserang": "40133" },
+          "Kiaracondong": { "Babakansari": "40283", "Cicaheum": "40282", "Kebonkangkung": "40284" },
+          "Lengkong": { "Burangrang": "40262", "Cijagra": "40265", "Malabar": "40262", "Turangga": "40264" },
+          "Sukajadi": { "Cipedes": "40162", "Pasteur": "40161", "Sukagalih": "40163", "Sukawarna": "40164" },
+          "Sumur Bandung": { "Braga": "40111", "Kebonpisang": "40112", "Merdeka": "40113" }
+      },
+      "Kab. Bandung": {
+          "Margahayu": { "Margahayu Selatan": "40226", "Margahayu Tengah": "40225", "Sayati": "40228", "Sukamenak": "40227" },
+          "Margaasih": { "Margaasih": "40215", "Rahayu": "40218", "Mekrahayu": "40218", "Nanjung": "40217", "Cigondewah Hilir": "40214" },
+          "Dayeuhkolot": { "Dayeuhkolot": "40238", "Cangkuang Kulon": "40239", "Cangkuang Wetan": "40238", "Citeureup": "40237" },
+          "Baleendah": { "Baleendah": "40375", "Andir": "40375", "Bojongmalaka": "40375", "Manggahang": "40375", "Rancamanyar": "40375" },
+          "Soreang": { "Soreang": "40911", "Cingcin": "40914", "Pamekaran": "40912", "Sadu": "40913", "Sekarwangi": "40915" },
+          "Katapang": { "Katapang": "40921", "Banyusari": "40921", "Cilampeni": "40921", "Gandasari": "40921", "Sangkanhurip": "40921" },
+          "Bojongsoang": { "Bojongsoang": "40288", "Bojongsari": "40288", "Buahbatu": "40287", "Cipagalo": "40287", "Lengkong": "40287" },
+          "Cileunyi": { "Cileunyi Kulon": "40620", "Cileunyi Wetan": "40622", "Cimekar": "40623", "Cinunuk": "40624" }
+      },
+      "Kab. Bandung Barat": {
+          "Padalarang": { "Padalarang": "40553", "Kertamulya": "40553", "Kertajaya": "40553", "Ciburuy": "40553", "Laksanamekar": "40553", "Jayamekar": "40553" },
+          "Ngamprah": { "Ngamprah": "40552", "Cilame": "40552", "Cimareme": "40552", "Gadobangkong": "40552", "Tanimulya": "40552", "Pakuhaji": "40552" },
+          "Parongpong": { "Sariwangi": "40559", "Cihanjuang": "40559", "Cihanjuang Rahayu": "40559", "Ciwaruga": "40559", "Karyawangi": "40559" },
+          "Lembang": { "Lembang": "40391", "Jayagiri": "40391", "Kayuambon": "40391", "Gudangkahuripan": "40391", "Wangunsari": "40391" },
+          "Cisarua": { "Cisarua": "40551", "Jambudipa": "40551", "Kertawangi": "40551", "Pasirhalang": "40551", "Padaasih": "40551" },
+          "Batujajar": { "Batujajar Barat": "40561", "Batujajar Timur": "40561", "Cangkorah": "40561", "Galanggang": "40561" },
+          "Cihampelas": { "Cihampelas": "40562", "Cipatik": "40562", "Citapen": "40562", "Mekarmukti": "40562", "Patrolsari": "40562" }
+      }
+  };
+
   // --- FORM STATE BARU (SISTEM MULTI-BARIS) ---
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('628');
+  const [phone, setPhone] = useState('08');
   const [showSuggestions, setShowSuggestions] = useState(false);
   // items adalah array yang menyimpan baris-baris produk yang dipilih
   const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
@@ -421,7 +481,7 @@ export default function TransactionsPage() {
   const cancelEdit = () => {
     setEditingId(null);
     setName('');
-    setPhone('628');
+    setPhone('08');
     setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
     setPaymentStatus('lunas');
     setAmountPaid('');
@@ -479,6 +539,54 @@ export default function TransactionsPage() {
       setLoading(false);
     }
   };
+
+  // FUNGSI BUKA MODAL RESI
+  const handleOpenResi = (group: any) => {
+      setCurrentResi(group);
+      
+      // 1. Tarik no HP lama dari database
+      let rawPhone = group.items[0]?.customer_phone || '08';
+      
+      // 2. KUNCI SAKTI: Ubah "628" jadi "08" otomatis untuk data lama!
+      if (rawPhone.startsWith('62')) {
+          rawPhone = '0' + rawPhone.slice(2); // Buang '62', ganti jadi '0'
+      }
+
+      // 3. Format otomatis tiap 4 angka ada strip
+      let formattedPhone = rawPhone.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1-');
+
+      setResiForm({
+          ...resiForm,
+          name: group.customer_name,
+          phone: formattedPhone,
+          detailAddress: '', city: '', district: '', subdistrict: '', postalCode: ''
+      });
+      setShowResiModal(true);
+  };
+
+  // FUNGSI DOWNLOAD RESI PNG (UKURAN THERMAL 80mm)
+  const handleDownloadResiImage = async () => {
+    const node = document.getElementById('shipping-label-template');
+    if (!node) return;
+
+    setLoading(true);
+    const idToast = toast.loading('Mencetak resi pengiriman...');
+    try {
+      await htmlToImage.toPng(node, { cacheBust: true }); 
+      const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3, cacheBust: true });
+      
+      setGeneratedImage(dataUrl);
+      setShowImageModal(true);  
+      setShowResiModal(false); 
+
+      toast.success('Resi siap dicetak!', { id: idToast });
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal membuat resi', { id: idToast });
+    } finally {
+      setLoading(false);
+    }
+  };
   
   return (
     <div className="font-sans pb-48">
@@ -512,7 +620,7 @@ export default function TransactionsPage() {
                         {filteredCustomers.map((cust: any, idx: number) => (
                             <li 
                                 key={idx} onMouseDown={(e) => e.preventDefault()} 
-                                onClick={() => { setName(cust.customer_name); setPhone(cust.customer_phone || '628'); setShowSuggestions(false); }}
+                                onClick={() => { setName(cust.customer_name); setPhone(cust.customer_phone || '08'); setShowSuggestions(false); }}
                                 className="p-4 hover:bg-emerald-50 cursor-pointer transition flex justify-between items-center group active:bg-emerald-100"
                             >
                                 <div className="flex flex-col">
@@ -534,8 +642,8 @@ export default function TransactionsPage() {
                     No. WhatsApp
                 </label>
                 <input 
-                    type="number" required value={phone} 
-                    onChange={(e) => setPhone(e.target.value)} 
+                    type="tel" required value={phone} 
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1-'))} 
                     className="w-full text-base font-bold outline-none text-slate-800 font-mono mt-1 bg-transparent" 
                 />
             </div>
@@ -861,13 +969,20 @@ export default function TransactionsPage() {
                                     {new Date(group.key).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
                                 </p>
                                 
-                                {/* Tombol Jejer Dua (Cetak & Hapus Semua) */}
-                                <div className="flex gap-2">
+                                {/* Tombol Jejer (Cetak, Resi & Hapus Semua) */}
+                                <div className="flex flex-wrap gap-2">
                                     <button 
                                         onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
                                         className="flex items-center text-[9px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-100 transition border border-emerald-100"
                                     >
-                                        <Printer className="w-3 h-3 mr-1" /> CETAK
+                                        <Printer className="w-3 h-3 mr-1" /> STRUK
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleOpenResi(group)}
+                                        className="flex items-center text-[9px] font-black bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-indigo-100 transition border border-indigo-100"
+                                    >
+                                        <Truck className="w-3 h-3 mr-1" /> RESI
                                     </button>
                                     <button 
                                         onClick={() => handleDeleteGroup(group.items)}
@@ -1135,6 +1250,195 @@ export default function TransactionsPage() {
                     </form>
                 </div>
             </div>
+        )}
+        {/* ========================================================= */}
+        {/* MODAL INPUT RESI PENGIRIMAN & TEMPLATE THERMAL 80mm */}
+        {/* ========================================================= */}
+        {showResiModal && (
+          <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto scrollbar-hide">
+              <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
+                <div>
+                  <h2 className="font-black text-slate-800 text-lg flex items-center"><Package className="w-5 h-5 mr-2 text-indigo-500"/> Data Pengiriman</h2>
+                  <p className="text-[10px] text-slate-500 font-bold mt-1">Lengkapi alamat penerima</p>
+                </div>
+                <button onClick={() => setShowResiModal(false)} className="p-2 bg-slate-100 rounded-full hover:bg-rose-100 hover:text-rose-600 transition"><X className="w-4 h-4"/></button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Ekspedisi & Nama */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">Ekspedisi</label>
+                        <select value={resiForm.courier} onChange={e => setResiForm({...resiForm, courier: e.target.value, customCourier: ''})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none mb-2">
+                            <option value="AHSAN XPRESS">Ahsan Xpress</option>
+                            <option value="PAXEL">Paxel</option>
+                            <option value="GOSEND">GoSend</option>
+                            <option value="KURIR UMIWA">Kurir Pempek Umiwa</option>
+                            <option value="MANUAL">Lainnya (Manual)</option>
+                        </select>
+                        {resiForm.courier === 'MANUAL' && (
+                            <input type="text" autoFocus value={resiForm.customCourier} onChange={e => setResiForm({...resiForm, customCourier: e.target.value})} placeholder="Ketik nama ekspedisi..." className="w-full p-3 bg-white border border-indigo-300 rounded-xl text-xs font-bold outline-none" />
+                        )}
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">No. HP Penerima</label>
+                        <input type="tel" value={resiForm.phone} onChange={e => setResiForm({...resiForm, phone: e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1-')})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">Nama Penerima</label>
+                    <input type="text" value={resiForm.name} onChange={e => setResiForm({...resiForm, name: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" />
+                </div>
+
+                {/* Dropdown Alamat Pintar + Opsi Manual */}
+                <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 space-y-3">
+                    <div>
+                        <label className="text-[10px] font-black text-indigo-400 uppercase block mb-1.5">Kota / Kabupaten</label>
+                        <select value={isManualAddress ? 'MANUAL' : resiForm.city} onChange={e => {
+                            if (e.target.value === 'MANUAL') {
+                                setIsManualAddress(true);
+                                setResiForm({...resiForm, city: '', district: '', subdistrict: '', postalCode: ''});
+                            } else {
+                                setIsManualAddress(false);
+                                setResiForm({...resiForm, city: e.target.value, district: '', subdistrict: '', postalCode: ''});
+                            }
+                        }} className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-400">
+                            <option value="" disabled>-- Pilih Kota --</option>
+                            {Object.keys(ADDRESS_DATA).map(c => <option key={c} value={c}>{c}</option>)}
+                            <option value="MANUAL" className="font-black text-indigo-600">✍️ Ketik Manual (Luar Kota)</option>
+                        </select>
+                    </div>
+
+                    {/* JIKA MODE MANUAL AKTIF */}
+                    {isManualAddress && (
+                        <div className="space-y-3 animate-in fade-in">
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="text" value={resiForm.city} onChange={e => setResiForm({...resiForm, city: e.target.value})} placeholder="Nama Kota/Kab" className="w-full p-3 bg-white border border-indigo-300 rounded-xl text-xs font-bold outline-none" />
+                                <input type="text" value={resiForm.district} onChange={e => setResiForm({...resiForm, district: e.target.value})} placeholder="Kecamatan" className="w-full p-3 bg-white border border-indigo-300 rounded-xl text-xs font-bold outline-none" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <input type="text" value={resiForm.subdistrict} onChange={e => setResiForm({...resiForm, subdistrict: e.target.value})} placeholder="Kelurahan / Desa" className="w-full p-3 bg-white border border-indigo-300 rounded-xl text-xs font-bold outline-none" />
+                                <input type="text" value={resiForm.postalCode} onChange={e => setResiForm({...resiForm, postalCode: e.target.value})} placeholder="Kode Pos" className="w-full p-3 bg-white border border-indigo-300 rounded-xl text-xs font-bold outline-none" />
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* JIKA MODE DROPDOWN (TIDAK MANUAL) */}
+                    {!isManualAddress && resiForm.city && (
+                        <div>
+                            <label className="text-[10px] font-black text-indigo-400 uppercase block mb-1.5">Kecamatan</label>
+                            <select value={resiForm.district} onChange={e => setResiForm({...resiForm, district: e.target.value, subdistrict: '', postalCode: ''})} className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold outline-none">
+                                <option value="">-- Pilih Kecamatan --</option>
+                                {Object.keys(ADDRESS_DATA[resiForm.city]).map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                        </div>
+                    )}
+
+                    {!isManualAddress && resiForm.district && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-black text-indigo-400 uppercase block mb-1.5">Kelurahan</label>
+                                <select value={resiForm.subdistrict} onChange={e => {
+                                    const zip = ADDRESS_DATA[resiForm.city][resiForm.district][e.target.value];
+                                    setResiForm({...resiForm, subdistrict: e.target.value, postalCode: zip});
+                                }} className="w-full p-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold outline-none">
+                                    <option value="">-- Kelurahan --</option>
+                                    {Object.keys(ADDRESS_DATA[resiForm.city][resiForm.district]).map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-indigo-400 uppercase block mb-1.5">Kode Pos</label>
+                                <input type="text" readOnly value={resiForm.postalCode} placeholder="Auto" className="w-full p-3 bg-slate-100 border border-indigo-200 rounded-xl text-xs font-bold text-slate-500 outline-none" />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase block mb-1.5">Detail Jalan / Patokan</label>
+                    <textarea rows={3} value={resiForm.detailAddress} onChange={e => setResiForm({...resiForm, detailAddress: e.target.value})} placeholder="Contoh: Jl. Merdeka No 10, rumah pagar hitam..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none resize-none"></textarea>
+                </div>
+
+                <button onClick={handleDownloadResiImage} disabled={loading} className="w-full mt-4 bg-indigo-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center shadow-lg shadow-indigo-500/30 active:scale-95 transition hover:bg-indigo-700">
+                  <Printer className="w-4 h-4 mr-2" /> {loading ? 'MENYIAPKAN...' : 'CETAK RESI THERMAL (80mm)'}
+                </button>
+              </div>
+            </div>
+
+            {/* TEMPLATE RAHASIA THERMAL 80mm */}
+            <div className="fixed left-[-9999px] top-0">
+              <div id="shipping-label-template" className="bg-white w-[302px] p-0 text-black border border-black" style={{ fontFamily: 'Arial, sans-serif' }}>
+                
+                {/* Header Ekspedisi */}
+                <div className="border-b-[2px] border-black p-2 text-center bg-black text-white">
+                    <h1 className="text-lg font-black tracking-widest uppercase">
+                        {resiForm.courier === 'MANUAL' ? resiForm.customCourier : resiForm.courier}
+                    </h1>
+                </div>
+
+                {/* ID Transaksi */}
+                <div className="p-1.5 border-b-[2px] border-black text-center bg-gray-100">
+                    <p className="text-[11px] font-bold tracking-[0.2em] uppercase">{currentResi?.key ? `UMW-${new Date(currentResi.key).getTime()}` : 'UMW-000000000'}</p>
+                </div>
+
+                {/* PENERIMA (SPASI DIRAPIKAN, ALAMAT DIBESARKAN) */}
+                <div className="p-3 border-b-[2px] border-black">
+                    <div className="flex items-start mb-0.5">
+                        <span className="bg-black text-white text-[10px] font-bold px-2 py-1 mr-2 rounded-sm mt-0.5">KE</span>
+                        <h2 className="text-xl font-black uppercase leading-tight tracking-tight">{resiForm.name}</h2>
+                    </div>
+                    <p className="text-sm font-black ml-9">{resiForm.phone}</p>
+                    
+                    {/* Alamat Penerima naik jadi text-sm, spasi otomatis hilang kalau patokan kosong */}
+                    <p className="text-sm font-bold leading-snug ml-9 uppercase mt-1">
+                        {resiForm.detailAddress && <>{resiForm.detailAddress}<br/></>}
+                        Kel. {resiForm.subdistrict || '-'}, Kec. {resiForm.district || '-'}<br/>
+                        {resiForm.city || 'Kota -'} - {resiForm.postalCode || ''}
+                    </p>
+                </div>
+
+                {/* PENGIRIM (SPASI DIRAPIKAN, ALAMAT DIBESARKAN) */}
+                <div className="p-3 border-b-[2px] border-black flex items-start">
+                    <span className="border border-black text-black text-[10px] font-bold px-2 py-1 mr-2 mt-0.5">DARI</span>
+                    <div>
+                        <h2 className="text-sm font-black uppercase leading-tight">Pempek Umiwa (0877-8847-2837)</h2>
+                        {/* Alamat Pengirim naik jadi text-xs dan jarak atasnya ditipiskan */}
+                        <p className="text-xs font-bold leading-tight mt-0.5">
+                            Jl. Warga Bhakti No. 18, RT.02/RW.11<br/>
+                            Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi 40532
+                        </p>
+                    </div>
+                </div>
+
+                {/* DAFTAR PRODUK */}
+                <div className="p-3 border-b-[2px] border-black">
+                    <h3 className="text-xs font-black uppercase border-b border-black border-dashed pb-1 mb-2">Isi Paket (Frozen Food)</h3>
+                    <ul className="space-y-1.5">
+                        {currentResi?.items.map((item: any, idx: number) => (
+                            <li key={idx} className="text-xs font-bold flex justify-between">
+                                <span className="flex-1 pr-2 truncate uppercase">{item.product_name}</span>
+                                <span>{item.qty} Pcs</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+
+                {/* FOOTER */}
+                <div className="p-4 text-center">
+                    <div className="border-2 border-black p-2.5 mb-4">
+                        <p className="text-sm font-black uppercase tracking-widest">⚠️ FROZEN FOOD ⚠️</p>
+                    </div>
+                    <div className="flex justify-center items-center gap-2.5">
+                        <img src="/logo-umiwa.jpg" className="w-10 h-10 rounded-full grayscale contrast-200 border-[1.5px] border-black" alt="Logo"/>
+                        <p className="text-[10px] font-bold uppercase tracking-widest">Pempek Umiwa</p>
+                    </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>
