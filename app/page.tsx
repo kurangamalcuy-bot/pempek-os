@@ -58,7 +58,8 @@ export default function Dashboard() {
   });
 
   transactions.forEach(t => {
-    const rawName = t.product_name || 'Pempek Campur';
+    // KUNCI RAHASIA: Potong nama jika ada " | " supaya kembali ke nama aslinya
+    const rawName = (t.product_name || 'Pempek Campur').split(' | ')[0];
     const key = rawName.trim().toLowerCase(); 
     
     if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim(), isArchived: false };
