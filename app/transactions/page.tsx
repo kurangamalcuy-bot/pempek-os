@@ -467,7 +467,9 @@ export default function TransactionsPage() {
       batchId: t.batch_id, 
       qty: t.qty.toString(), 
       priceOption: [20000, 25000].includes(t.selling_price) ? t.selling_price.toString() : 'custom', 
-      customPrice: [20000, 25000].includes(t.selling_price) ? '' : t.selling_price.toString() 
+      customPrice: [20000, 25000].includes(t.selling_price) ? '' : t.selling_price.toString(),
+      // INI YANG KETINGGALAN DAN BIKIN ERROR BUILD:
+      bundleLabel: t.product_name?.includes(' | ') ? t.product_name.split(' | ')[1] : ''
     }]);
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
