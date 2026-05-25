@@ -1037,9 +1037,9 @@ export default function TransactionsPage() {
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Biaya Ongkir</label>
                   <div className="grid grid-cols-3 gap-2 mb-2">
-                    {[0, 10000].map(val => (
+                    {[0, 9000].map(val => (
                       <button key={val} onClick={() => {setOngkir(val); setCustomOngkir('')}} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === val && !customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {val === 0 ? 'Gratis' : '10 Ribu'}
+                        {val === 0 ? 'Gratis' : '9 Ribu'}
                       </button>
                     ))}
                     <button onClick={() => setOngkir(-1)} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === -1 || customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Manual</button>
@@ -1085,7 +1085,7 @@ export default function TransactionsPage() {
                   
                   {/* Alamat Tanpa Kotak (Langsung di atas background putih) */}
                   <p className="text-[9px] font-bold text-slate-400 leading-relaxed max-w-[300px] mx-auto uppercase tracking-tight">
-                    Jl Warga Bhakti No.18, RT.02, RW.11, Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi, 40532
+                    Jl Warga Bakti No.18, RT.02, RW.11, Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi, 40532
                   </p>
                 </div>
 
@@ -1406,7 +1406,7 @@ export default function TransactionsPage() {
                         <h2 className="text-sm font-black uppercase leading-tight">Pempek Umiwa (0877-8847-2837)</h2>
                         {/* Alamat Pengirim naik jadi text-xs dan jarak atasnya ditipiskan */}
                         <p className="text-xs font-bold leading-tight mt-0.5">
-                            Jl. Warga Bhakti No. 18, RT.02/RW.11<br/>
+                            Jl. Warga Bakti No. 18, RT.02/RW.11<br/>
                             Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi 40532
                         </p>
                     </div>
