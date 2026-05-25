@@ -683,12 +683,13 @@ export default function TransactionsPage() {
                     return (
                         <button 
                             key={i} type="button" onClick={() => handleApplyBundle(bundle.name)}
-                            className={`flex-none w-44 text-left bg-gradient-to-br ${bgColors[i % 3]} text-white border p-3.5 rounded-[20px] shadow-lg hover:brightness-110 transition-all active:scale-95 relative overflow-hidden`}
+                            className={`flex-none w-max pr-6 text-left bg-gradient-to-br ${bgColors[i % 3]} text-white border p-3.5 rounded-[20px] shadow-lg hover:brightness-110 transition-all active:scale-95 relative overflow-hidden`}
                         >
                             {/* Efek kilap di pojok */}
                             <div className="absolute top-0 right-0 w-16 h-16 bg-white/20 rounded-full -translate-y-8 translate-x-6 blur-md"></div>
                             
-                            <span className="block text-xs font-black leading-tight mb-1 drop-shadow-sm">{bundle.name.split(' (')[0]}</span>
+                            {/* Tambahkan whitespace-nowrap di baris ini */}
+                            <span className="block text-xs font-black leading-tight mb-1 drop-shadow-sm whitespace-nowrap">{bundle.name.split(' (')[0]}</span>
                             <span className="block text-[10px] text-white/80 font-medium mb-2.5">{bundle.name.match(/\(([^)]+)\)/)?.[1] || ''}</span>
                             <span className="inline-block text-[10px] bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg font-black text-white shadow-inner">🔥 Hemat {hemat}</span>
                         </button>
