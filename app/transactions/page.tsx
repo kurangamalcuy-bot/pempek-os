@@ -93,11 +93,16 @@ export default function TransactionsPage() {
   const [phone, setPhone] = useState('08');
   const [showSuggestions, setShowSuggestions] = useState(false);
   // items adalah array yang menyimpan baris-baris produk yang dipilih
-  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
+  // 1. Qty default diubah jadi '1'
+  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '1', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
   const [type, setType] = useState('organik'); 
-  const [account, setAccount] = useState('Tunai (Laci)');
-  const [paymentStatus, setPaymentStatus] = useState('lunas');
-  const [amountPaid, setAmountPaid] = useState('');
+  // 3. Pembayaran via default diubah jadi E-Wallet
+  const [account, setAccount] = useState('E-Wallet');
+  // 2. Status default Kasbon dan nominal DP default 0
+  const [paymentStatus, setPaymentStatus] = useState('belum_lunas');
+  const [amountPaid, setAmountPaid] = useState('0');
+  // --- STATE UNTUK TAB MENU BAWAH ---
+  const [activeTab, setActiveTab] = useState('kasbon'); // 'kasbon' atau 'riwayat'
 
   useEffect(() => {
     fetchData();
@@ -142,7 +147,7 @@ export default function TransactionsPage() {
 
   // --- FUNGSI DINAMIS UNTUK BARIS PRODUK ---
   const handleAddRow = () => {
-    setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
+    setItems([...items, { id: Date.now(), batchId: '', qty: '1', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
   };
 
   // --- FUNGSI PENDETEKSI PINTAR (SMART MATCH) ---
@@ -209,6 +214,17 @@ export default function TransactionsPage() {
 
   const updateItem = (id: number, field: string, value: string) => {
     setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  // --- TAMBAHAN BARU: FUNGSI TUKAR VARIAN OTOMATIS ---
+  const swapItemVariant = (id: number, targetBatchId: string, newQty: string, newPrice: string) => {
+    setItems(prevItems => prevItems.map(i => i.id === id ? {
+        ...i,
+        batchId: targetBatchId,
+        qty: newQty,
+        customPrice: newPrice
+    } : i));
+    toast.success("Varian berhasil ditukar otomatis!");
   };
 
   // --- HITUNGAN SISA STOK (MESIN PINTAR REAL-TIME) ---
@@ -481,9 +497,9 @@ export default function TransactionsPage() {
     setEditingId(null);
     setName('');
     setPhone('08');
-    setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
-    setPaymentStatus('lunas');
-    setAmountPaid('');
+    setItems([{ id: Date.now(), batchId: '', qty: '1', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
+    setPaymentStatus('belum_lunas');
+    setAmountPaid('0');
   };
 
 // --- BATAS AKHIR KODE LANGKAH 2 ---
@@ -654,18 +670,27 @@ export default function TransactionsPage() {
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Daftar Pesanan</h3>
             </div>
 
-            {/* Quick Bundles (Swipeable) */}
-            <div className="flex overflow-x-auto gap-2.5 pb-3 scrollbar-hide -mx-5 px-5 sm:mx-0 sm:px-0">
+            {/* Quick Bundles (Swipeable) Dibuat Mencolok */}
+            <div className="flex overflow-x-auto gap-3 pb-4 scrollbar-hide -mx-5 px-5 sm:mx-0 sm:px-0">
                 {BUNDLES.map((bundle, i) => {
                     const hemat = bundle.name.includes("Cicip") ? "4rb" : bundle.name.includes("Keluarga") ? "10rb" : "14rb";
+                    // Bikin 3 warna berbeda biar seger di mata
+                    const bgColors = [
+                        'from-amber-400 to-orange-500 shadow-orange-500/40 border-orange-400',
+                        'from-emerald-400 to-teal-500 shadow-emerald-500/40 border-teal-400',
+                        'from-indigo-400 to-purple-500 shadow-indigo-500/40 border-indigo-400'
+                    ];
                     return (
                         <button 
                             key={i} type="button" onClick={() => handleApplyBundle(bundle.name)}
-                            className="flex-none w-40 text-left bg-gradient-to-br from-white to-amber-50/30 border border-amber-100/50 p-3 rounded-2xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] hover:border-amber-300 transition active:scale-95"
+                            className={`flex-none w-44 text-left bg-gradient-to-br ${bgColors[i % 3]} text-white border p-3.5 rounded-[20px] shadow-lg hover:brightness-110 transition-all active:scale-95 relative overflow-hidden`}
                         >
-                            <span className="block text-[11px] font-black text-slate-800 leading-tight mb-1">{bundle.name.split(' (')[0]}</span>
-                            <span className="block text-[9px] text-slate-500 font-medium mb-2">{bundle.name.match(/\(([^)]+)\)/)?.[1] || ''}</span>
-                            <span className="inline-block text-[9px] bg-amber-100/50 px-2 py-0.5 rounded-md font-bold text-amber-700"> Hemat {hemat}</span>
+                            {/* Efek kilap di pojok */}
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-white/20 rounded-full -translate-y-8 translate-x-6 blur-md"></div>
+                            
+                            <span className="block text-xs font-black leading-tight mb-1 drop-shadow-sm">{bundle.name.split(' (')[0]}</span>
+                            <span className="block text-[10px] text-white/80 font-medium mb-2.5">{bundle.name.match(/\(([^)]+)\)/)?.[1] || ''}</span>
+                            <span className="inline-block text-[10px] bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg font-black text-white shadow-inner">🔥 Hemat {hemat}</span>
                         </button>
                     );
                 })}
@@ -675,11 +700,67 @@ export default function TransactionsPage() {
             <div className="space-y-4">
                 {items.map((item, index) => {
                     const currentStock = item.batchId ? getRemainingStock(item.batchId) : 0;
-                    const isQtyInvalid = item.batchId && Number(item.qty) > currentStock;
+                    const isHabis = item.batchId && currentStock <= 0;
+                    const isQtyInvalid = item.batchId && Number(item.qty) > currentStock && !isHabis;
                     const selectedBatch = batches.find(b => b.id === item.batchId);
+                    const rawBatchName = selectedBatch ? selectedBatch.product_name.toLowerCase() : '';
+                    
+                    const variantColors = ['border-l-emerald-500', 'border-l-blue-500', 'border-l-amber-500', 'border-l-rose-500', 'border-l-purple-500'];
+                    const vColor = variantColors[index % variantColors.length];
+
+                    // LOGIKA PERUBAHAN WARNA KOTAK (MERAH JIKA HABIS)
+                    const bgColor = isHabis ? 'bg-rose-100/60' : isQtyInvalid ? 'bg-orange-50' : 'bg-white';
+                    const borderColor = isHabis ? 'border-rose-300' : isQtyInvalid ? 'border-orange-300' : 'border-slate-200';
+
+                    // LOGIKA ATURAN TUKAR PRODUK (SWAP)
+                    let swapTargetRule = "";
+                    let swapQtyMultiplier = 1;
+                    let swapPriceDivider = 1;
+                    let swapBtnText = "";
+
+                    if (rawBatchName.includes("20")) {
+                        swapTargetRule = "isi 10 biasa";
+                        swapQtyMultiplier = 2; // Diganti jadi 2 bungkus
+                        swapPriceDivider = 2;  // Harga dibagi 2
+                        swapBtnText = "Tukar ke 2x Pempek Isi 10";
+                    } else if (rawBatchName.includes("tekwan")) {
+                        swapTargetRule = "besar";
+                        swapBtnText = "Tukar ke Pempek Besar 10";
+                    } else if (rawBatchName.includes("besar") && rawBatchName.includes("10")) {
+                        swapTargetRule = "tekwan";
+                        swapBtnText = "Tukar ke Tekwan";
+                    } else if (rawBatchName.includes("adaan") || rawBatchName.includes("kulit")) {
+                        swapTargetRule = "isi 10 biasa";
+                        swapBtnText = "Tukar ke Pempek Isi 10";
+                    } else if (rawBatchName.includes("10") && !rawBatchName.includes("besar") && !rawBatchName.includes("selam")) {
+                        swapTargetRule = "adaan";
+                        swapBtnText = "Tukar ke Adaan+Kulit 12";
+                    }
+
+                    // EKSEKUSI PENUKARAN PRODUK
+                    const handleExecuteSwap = () => {
+                        const targetBatch = availableBatches.find(b => {
+                            const bn = b.product_name.toLowerCase();
+                            if (swapTargetRule === "isi 10 biasa") return bn.includes("10") && !bn.includes("besar") && !bn.includes("selam");
+                            if (swapTargetRule === "adaan") return bn.includes("adaan") || bn.includes("kulit");
+                            if (swapTargetRule === "besar") return bn.includes("besar") && bn.includes("10");
+                            if (swapTargetRule === "tekwan") return bn.includes("tekwan");
+                            return false;
+                        });
+
+                        if (!targetBatch) return toast.error("Produk pengganti tidak ditemukan di database.");
+                        if (targetBatch.stock <= 0) return toast.error(`Stok ${targetBatch.product_name} juga sedang habis!`);
+
+                        const newQty = String(Number(item.qty || 1) * swapQtyMultiplier);
+                        const newPrice = item.priceOption === 'custom' && item.customPrice 
+                            ? String(Number(item.customPrice) / swapPriceDivider) 
+                            : item.customPrice;
+
+                        swapItemVariant(item.id, targetBatch.id, newQty, newPrice);
+                    };
 
                     return (
-                        <div key={item.id} className="p-4 bg-white rounded-[24px] shadow-sm border border-slate-200 relative group transition-all">
+                        <div key={item.id} className={`p-4 ${bgColor} rounded-[24px] shadow-md border ${borderColor} border-l-[6px] ${vColor} relative group transition-all`}>
                             
                             {/* Header: Nomor Varian & Tombol Hapus */}
                             <div className="flex justify-between items-center mb-3">
@@ -761,14 +842,39 @@ export default function TransactionsPage() {
                                 </div>
                             )}
                             
-                            {isQtyInvalid && <p className="text-[9px] text-rose-500 font-bold mt-2 bg-rose-50 p-2 rounded-lg">⚠️ Melebihi batas! Sisa di freezer: {currentStock}</p>}
+                            {/* 1. PERINGATAN WARNA MERAH HANYA MUNCUL JIKA STOK BENAR-BENAR HABIS */}
+                            {isHabis && (
+                                <p className="text-[10px] text-rose-600 font-black bg-rose-100 p-2.5 rounded-xl border border-rose-200 mt-3 animate-in zoom-in-95">
+                                    ⚠️ STOK HABIS! Silakan hapus atau tukar varian ini.
+                                </p>
+                            )}
+
+                            {/* 2. TOMBOL HITAM AUTO-SWAP: SEKARANG SELALU MUNCUL TANPA MENUNGGU STOK 0 */}
+                            {swapBtnText && (
+                                <div className="mt-2 animate-in zoom-in-95">
+                                    <button 
+                                        type="button" 
+                                        onClick={handleExecuteSwap}
+                                        className="w-full bg-slate-900 text-white font-black text-[11px] p-3 rounded-xl hover:bg-slate-800 transition active:scale-95 shadow-md flex items-center justify-center"
+                                    >
+                                         🔁 {swapBtnText}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* 3. PERINGATAN JIKA JUMLAH DIINPUT MELEBIHI STOK YANG ADA */}
+                            {isQtyInvalid && (
+                                <p className="text-[10px] text-orange-600 font-black mt-3 bg-orange-100 p-2.5 rounded-xl border border-orange-200">
+                                    ⚠️ Melebihi batas! Sisa di freezer: {currentStock}
+                                </p>
+                            )}
                         </div>
                     )
                 })}
                 
-                {/* Tombol Tambah Varian yang TERPISAH dari kotak putih */}
-                <button type="button" onClick={handleAddRow} className="w-full p-4 bg-emerald-50/80 text-emerald-600 border border-emerald-200 border-dashed rounded-[24px] font-black text-xs flex items-center justify-center hover:bg-emerald-100 transition active:scale-95 shadow-sm">
-                    <Plus className="w-4 h-4 mr-1.5" /> TAMBAH VARIAN BARU
+                {/* Tombol Tambah Varian Dibuat Kontras & Kedap-Kedip (Pulse) */}
+                <button type="button" onClick={handleAddRow} className="w-full p-4 bg-amber-400 text-amber-900 border-2 border-amber-500 border-dashed rounded-[24px] font-black text-xs flex items-center justify-center hover:bg-amber-500 transition active:scale-95 shadow-md animate-pulse">
+                    <Plus className="w-5 h-5 mr-1.5" /> TAMBAH VARIAN BARU
                 </button>
             </div>
           </div>
@@ -845,197 +951,185 @@ export default function TransactionsPage() {
 
         </form>
 
-        {/* REKAP PIUTANG (GROUPED BY CUSTOMER) */}
-        <section className="mt-8">
-          <h3 className="font-black text-rose-600 mb-3 flex items-center text-sm uppercase tracking-wide px-1">
-              <AlertCircle className="w-4 h-4 mr-1.5" /> Tagihan Belum Lunas
-          </h3>
-          <div className="space-y-3">
-            {(() => {
-                // LOGIKA CERDAS: Menggabungkan tagihan yang namanya sama
-                const groupedPiutang = Object.values(piutangList.reduce((acc: any, t) => {
-                    const key = t.customer_name.trim().toLowerCase(); // Disamakan huruf kecilnya
-                    if (!acc[key]) {
-                        acc[key] = { name: t.customer_name, phone: t.customer_phone, items: [], totalSisa: 0 };
-                    }
-                    const totalBill = t.qty * t.selling_price;
-                    const sisa = totalBill - t.amount_paid;
-                    
-                    acc[key].items.push({ ...t, sisa });
-                    acc[key].totalSisa += sisa;
-                    return acc;
-                }, {}));
-
-                if (groupedPiutang.length === 0) {
-                    return <p className="text-[11px] font-bold text-slate-400 text-center bg-white/50 py-6 rounded-[24px] border border-slate-100 border-dashed">Wah, hebat! Tidak ada satupun pelanggan yang berhutang. 🎉</p>;
-                }
-
-                // TAMPILAN KOTAK GROUP
-                return groupedPiutang.map((group: any, index: number) => (
-                    <div key={index} className="p-4 bg-white border border-rose-100 rounded-[24px] shadow-[0_4px_15px_-5px_rgba(244,63,94,0.05)] relative overflow-hidden">
-                      {/* Aksen Merah di Kiri */}
-                      <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-rose-400 rounded-l-[24px]"></div>
-                      
-                      <div className="flex justify-between items-start mb-3 pl-2">
-                        <div>
-                          <p className="font-black text-slate-800 text-sm leading-none">{group.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono font-bold mt-1.5">{group.phone || 'Tanpa WA'}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[9px] text-rose-400 font-black uppercase tracking-widest mb-0.5">Total Kekurangan</p>
-                          <p className="text-base font-black text-rose-600 leading-none">{formatIDR(group.totalSisa)}</p>
-                        </div>
-                      </div>
-
-                      {/* Rincian per item belanjaan */}
-                      <div className="bg-rose-50/50 rounded-xl p-3 mb-3 space-y-2 border border-rose-50 ml-2">
-                          {group.items.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between items-start text-[10px]">
-                                  <div className="flex gap-1.5 flex-wrap">
-                                      <span className="font-black text-slate-700">{item.qty}x</span>
-                                      {/* Desain UI baru pendeteksi Paket */}
-                                      <span className="font-bold text-slate-500 leading-snug">
-                                          {item.product_name.split(' | ')[0]} 
-                                          {item.product_name.includes(' | ') && <span className="text-[8px] text-amber-600 font-black ml-1">({item.product_name.split(' | ')[1]})</span>}
-                                      </span>
-                                  </div>
-                                  <span className="text-rose-500 font-black ml-2 whitespace-nowrap">{formatIDR(item.sisa)}</span>
-                              </div>
-                          ))}
-                      </div>
-
-                      <button onClick={() => handleLunasGroup(group.items, group.name)} className="w-full ml-1 bg-emerald-50 text-emerald-600 py-3 rounded-xl text-[11px] font-black flex items-center justify-center hover:bg-emerald-100 transition active:scale-95 border border-emerald-100">
-                        <CheckCircle2 className="w-4 h-4 mr-1.5" /> LUNASI SEMUA TAGIHAN {group.name.split(' ')[0].toUpperCase()}
-                      </button>
-                    </div>
-                ));
-            })()}
-          </div>
-        </section>
-        
         {/* ========================================= */}
-        {/* RIWAYAT DENGAN ZONA WARNA BERBEDA (BLOK)  */}
+        {/* SISTEM TABS: KASBON & RIWAYAT TRANSAKSI   */}
         {/* ========================================= */}
-        {/* -mx-5 px-5 fungsinya menarik warna mentok ke ujung layar HP */}
-        {/* bg-slate-100 memberi warna abu-abu yang kontras dengan putih di atasnya */}
-        <section className="mt-12 -mx-5 px-5 pt-10 pb-16 bg-slate-100 rounded-t-[40px] shadow-[inset_0_8px_20px_rgba(0,0,0,0.04)] border-t border-slate-200">
+        <section className="mt-12 bg-slate-100 -mx-5 px-5 pt-8 pb-16 rounded-t-[40px] shadow-[inset_0_8px_20px_rgba(0,0,0,0.04)] border-t border-slate-200 min-h-screen">
           
-          <div className="flex justify-between items-center mb-6 px-1">
-            <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-sm">
-                <Calendar className="w-5 h-5 mr-2 text-indigo-500" /> Riwayat
-            </h3>
-            <div className="flex space-x-1">
-              <select value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white text-slate-900 outline-none">
-                {[...Array(12)].map((_, i) => (<option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>))}
-              </select>
-              <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white text-slate-900 outline-none">
-                <option value={2026}>2026</option><option value={2025}>2025</option>
-              </select>
-            </div>
+          {/* Tombol Tab Switcher */}
+          <div className="flex bg-slate-200/60 p-1.5 rounded-[20px] mb-6">
+            <button 
+              type="button"
+              onClick={() => setActiveTab('kasbon')} 
+              className={`flex-1 py-3.5 text-xs font-black rounded-[16px] transition-all flex items-center justify-center ${activeTab === 'kasbon' ? 'bg-white text-rose-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <AlertCircle className={`w-4 h-4 mr-1.5 ${activeTab === 'kasbon' ? 'animate-pulse' : ''}`} /> 
+              KASBON PIUTANG
+            </button>
+            <button 
+              type="button"
+              onClick={() => setActiveTab('riwayat')} 
+              className={`flex-1 py-3.5 text-xs font-black rounded-[16px] transition-all flex items-center justify-center ${activeTab === 'riwayat' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Calendar className="w-4 h-4 mr-1.5" /> 
+              RIWAYAT TRANSAKSI
+            </button>
           </div>
 
-          <div className="space-y-4">
-            {(() => {
-                // LOGIKA PENGELOMPOKAN (GROUP BY WAKTU INPUT / 1 KALI SIMPAN)
-                const groupedHistory = Object.values(filteredTransactions.reduce((acc: any, t) => {
-                    const key = t.created_at; // Jadikan waktu klik "Simpan" sebagai kunci grouping
-                    if (!acc[key]) {
-                        acc[key] = {
-                            key: t.created_at,
-                            customer_name: t.customer_name,
-                            total: 0,
-                            items: []
-                        };
-                    }
-                    acc[key].items.push(t);
-                    acc[key].total += (t.qty * t.selling_price);
-                    return acc;
-                }, {})).sort((a: any, b: any) => new Date(b.key).getTime() - new Date(a.key).getTime());
+          {/* ISI TAB KASBON */}
+          {activeTab === 'kasbon' && (
+            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {(() => {
+                  const groupedPiutang = Object.values(piutangList.reduce((acc: any, t) => {
+                      const key = t.customer_name.trim().toLowerCase();
+                      if (!acc[key]) acc[key] = { name: t.customer_name, phone: t.customer_phone, items: [], totalSisa: 0 };
+                      const totalBill = t.qty * t.selling_price;
+                      const sisa = totalBill - t.amount_paid;
+                      acc[key].items.push({ ...t, sisa });
+                      acc[key].totalSisa += sisa;
+                      return acc;
+                  }, {}));
 
-                if (groupedHistory.length === 0) {
-                    return <div className="p-6 bg-slate-50 border border-slate-100 rounded-[24px] text-center"><p className="text-xs text-slate-400 font-bold">Belum ada riwayat transaksi bulan ini.</p></div>;
-                }
+                  if (groupedPiutang.length === 0) {
+                      return <p className="text-[11px] font-bold text-slate-400 text-center bg-white/50 py-10 rounded-[24px] border border-slate-200 border-dashed">Wah, hebat! Tidak ada satupun pelanggan yang berhutang. 🎉</p>;
+                  }
 
-                return groupedHistory.map((group: any) => (
-                    <div key={group.key} className="p-4 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_15px_-5px_rgba(0,0,0,0.05)] relative overflow-hidden">
-                        
-                        {/* GANTI MENJADI SEPERTI INI: */}
-                        {/* Header Nota */}
-                        <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
-                                    {/* Tombol Pensil untuk Edit Nama */}
-                                    <button 
-                                        type="button"
-                                        onClick={() => handleEditGroupName(group.items, group.customer_name)}
-                                        className="text-slate-400 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 p-1.5 rounded-lg transition-all active:scale-95"
-                                        title="Ganti Nama Pelanggan"
-                                    >
-                                        <Edit3 className="w-3 h-3" />
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2.5">
-                                    {new Date(group.key).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
-                                </p>
-                                
-                                {/* Tombol Jejer (Cetak, Resi & Hapus Semua) */}
-                                <div className="flex flex-wrap gap-2">
-                                    <button 
-                                        onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
-                                        className="flex items-center text-[9px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-100 transition border border-emerald-100"
-                                    >
-                                        <Printer className="w-3 h-3 mr-1" /> STRUK
-                                    </button>
-                                    <button 
-                                        type="button"
-                                        onClick={() => handleOpenResi(group)}
-                                        className="flex items-center text-[9px] font-black bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-indigo-100 transition border border-indigo-100"
-                                    >
-                                        <Truck className="w-3 h-3 mr-1" /> RESI
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteGroup(group.items)}
-                                        className="flex items-center text-[9px] font-black bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-rose-100 transition border border-rose-100"
-                                    >
-                                        <Trash2 className="w-3 h-3 mr-1" /> HAPUS SEMUA
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Belanja</p>
-                                <p className="text-base font-black text-emerald-600 leading-none">{formatIDR(group.total)}</p>
-                            </div>
+                  return groupedPiutang.map((group: any, index: number) => (
+                      <div key={index} className="p-4 bg-white border border-rose-100 rounded-[24px] shadow-sm relative overflow-hidden">
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-rose-400 rounded-l-[24px]"></div>
+                        <div className="flex justify-between items-start mb-3 pl-2">
+                          <div>
+                            <p className="font-black text-slate-800 text-sm leading-none">{group.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono font-bold mt-1.5">{group.phone || 'Tanpa WA'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[9px] text-rose-400 font-black uppercase tracking-widest mb-0.5">Total Kekurangan</p>
+                            <p className="text-base font-black text-rose-600 leading-none">{formatIDR(group.totalSisa)}</p>
+                          </div>
                         </div>
 
-                        {/* Rincian Barang di dalam Nota */}
-                        <div className="space-y-2">
-                            {group.items.map((t: any) => (
-                                <div key={t.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100/50 group/item transition-all hover:bg-slate-100/80">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                                          <p className="text-xs font-bold text-slate-700 leading-snug">{t.qty}x {t.product_name.split(' | ')[0]}</p>
-                                          {/* Badge Kuning jika ini adalah paket */}
-                                          {t.product_name.includes(' | ') && <span className="bg-amber-100 text-amber-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">{t.product_name.split(' | ')[1]}</span>}
-                                        </div>
-                                        <p className="text-[10px] font-black text-emerald-600/70">{formatIDR(t.qty * t.selling_price)}</p>
+                        <div className="bg-rose-50/50 rounded-xl p-3 mb-3 space-y-2 border border-rose-50 ml-2">
+                            {group.items.map((item: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-start text-[10px]">
+                                    <div className="flex gap-1.5 flex-wrap">
+                                        <span className="font-black text-slate-700">{item.qty}x</span>
+                                        <span className="font-bold text-slate-500 leading-snug">
+                                            {item.product_name.split(' | ')[0]} 
+                                            {item.product_name.includes(' | ') && <span className="text-[8px] text-amber-600 font-black ml-1">({item.product_name.split(' | ')[1]})</span>}
+                                        </span>
                                     </div>
-                                    <div className="flex space-x-1.5 ml-2">
-                                        <button onClick={() => handleEdit(t)} className="text-[10px] font-bold text-blue-600 bg-blue-50/80 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition border border-blue-100/50">
-                                            Edit
-                                        </button>
-                                        <button onClick={() => handleDelete(t.id)} className="text-[10px] font-bold text-rose-600 bg-rose-50/80 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition border border-rose-100/50">
-                                            Hapus
-                                        </button>
-                                    </div>
+                                    <span className="text-rose-500 font-black ml-2 whitespace-nowrap">{formatIDR(item.sisa)}</span>
                                 </div>
                             ))}
                         </div>
-                        
-                    </div>
-                ));
-            })()}
-          </div>
+
+                        <button onClick={() => handleLunasGroup(group.items, group.name)} className="w-full ml-1 bg-emerald-50 text-emerald-600 py-3 rounded-xl text-[11px] font-black flex items-center justify-center hover:bg-emerald-100 transition active:scale-95 border border-emerald-100">
+                            {/* Hapus .split(' ')[0] supaya nama tidak terpotong spasi */}
+                            <CheckCircle2 className="w-4 h-4 mr-1.5" /> LUNASI SEMUA TAGIHAN {group.name.toUpperCase()}
+                        </button>
+                      </div>
+                  ));
+              })()}
+            </div>
+          )}
+
+          {/* ISI TAB RIWAYAT */}
+          {activeTab === 'riwayat' && (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="flex justify-end items-center mb-4">
+                <div className="flex space-x-1.5">
+                  <select value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="p-1.5 text-[10px] font-bold border border-slate-200 rounded-lg bg-white text-slate-900 outline-none shadow-sm">
+                    {[...Array(12)].map((_, i) => (<option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>))}
+                  </select>
+                  <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="p-1.5 text-[10px] font-bold border border-slate-200 rounded-lg bg-white text-slate-900 outline-none shadow-sm">
+                    <option value={2026}>2026</option><option value={2025}>2025</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {(() => {
+                    const groupedHistory = Object.values(filteredTransactions.reduce((acc: any, t) => {
+                        const key = t.created_at; 
+                        if (!acc[key]) acc[key] = { key: t.created_at, customer_name: t.customer_name, total: 0, items: [] };
+                        acc[key].items.push(t);
+                        acc[key].total += (t.qty * t.selling_price);
+                        return acc;
+                    }, {})).sort((a: any, b: any) => new Date(b.key).getTime() - new Date(a.key).getTime());
+
+                    if (groupedHistory.length === 0) {
+                        return <div className="p-10 bg-white/50 border border-slate-200 border-dashed rounded-[24px] text-center"><p className="text-xs text-slate-400 font-bold">Belum ada riwayat transaksi bulan ini.</p></div>;
+                    }
+
+                    return groupedHistory.map((group: any) => (
+                        <div key={group.key} className="p-4 bg-white border border-slate-200 rounded-[24px] shadow-sm relative overflow-hidden">
+                            <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-black text-slate-800">{group.customer_name}</p>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleEditGroupName(group.items, group.customer_name)}
+                                            className="text-slate-400 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 p-1.5 rounded-lg transition-all active:scale-95"
+                                        >
+                                            <Edit3 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-bold mt-0.5 font-mono mb-2.5">
+                                        {new Date(group.key).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} • {new Date(group.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                                    </p>
+                                    
+                                    <div className="flex flex-wrap gap-2">
+                                        <button 
+                                            onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
+                                            className="flex items-center text-[9px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-100 transition border border-emerald-100"
+                                        >
+                                            <Printer className="w-3 h-3 mr-1" /> STRUK
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleOpenResi(group)}
+                                            className="flex items-center text-[9px] font-black bg-indigo-50 text-indigo-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-indigo-100 transition border border-indigo-100"
+                                        >
+                                            <Truck className="w-3 h-3 mr-1" /> RESI
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteGroup(group.items)}
+                                            className="flex items-center text-[9px] font-black bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-rose-100 transition border border-rose-100"
+                                        >
+                                            <Trash2 className="w-3 h-3 mr-1" /> HAPUS SEMUA
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Belanja</p>
+                                    <p className="text-base font-black text-emerald-600 leading-none">{formatIDR(group.total)}</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                {group.items.map((t: any) => (
+                                    <div key={t.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100/50 group/item transition-all hover:bg-slate-100/80">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                               <p className="text-xs font-bold text-slate-700 leading-snug">{t.qty}x {t.product_name.split(' | ')[0]}</p>
+                                               {t.product_name.includes(' | ') && <span className="bg-amber-100 text-amber-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">{t.product_name.split(' | ')[1]}</span>}
+                                            </div>
+                                            <p className="text-[10px] font-black text-emerald-600/70">{formatIDR(t.qty * t.selling_price)}</p>
+                                        </div>
+                                        <div className="flex space-x-1.5 ml-2">
+                                            <button onClick={() => handleEdit(t)} className="text-[10px] font-bold text-blue-600 bg-blue-50/80 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition border border-blue-100/50">Edit</button>
+                                            <button onClick={() => handleDelete(t.id)} className="text-[10px] font-bold text-rose-600 bg-rose-50/80 px-3 py-1.5 rounded-lg hover:bg-rose-100 transition border border-rose-100/50">Hapus</button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ));
+                })()}
+              </div>
+            </div>
+          )}
         </section>
         {/* --- MODAL INPUT BIAYA & DESAIN STRUK TERSEMBUNYI --- */}
         {showPrintModal && (
@@ -1204,18 +1298,15 @@ export default function TransactionsPage() {
                 />
               </div>
 
-              {/* Teks Arahan Untuk User (Warna Hijau) */}
-              <div className="text-center w-full">
-                <div className="bg-emerald-500/20 border border-emerald-500/40 rounded-3xl p-5 inline-block w-full backdrop-blur-sm">
-                   <p className="text-white text-sm font-black flex items-center justify-center mb-2.5 tracking-wide">
-                     <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-2" />
-                     STRUK SIAP DIKIRIM
-                   </p>
-                   <p className="text-slate-300 text-[11px] leading-relaxed font-medium">
-                     <b className="text-emerald-300 text-xs">Tekan & Tahan</b> (Long Press) pada gambar struk di atas.<br/><br/>
-                     Lalu pilih <b className="text-white">"Copy Image"</b> atau <b className="text-white">"Download Image"</b> untuk di-paste langsung ke chat pelanggan.
-                   </p>
-                </div>
+              {/* Teks Arahan Untuk User & Tombol Tutup Bawah */}
+              <div className="text-center w-full space-y-3">                
+                {/* TOMBOL TUTUP MERAH BESAR DI BAWAH GAMBAR */}
+                <button 
+                   onClick={() => setShowImageModal(false)}
+                   className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-rose-500"
+                >
+                   <X className="w-5 h-5 mr-2" /> TUTUP GAMBAR
+                </button>
               </div>
             </div>
           </div>
