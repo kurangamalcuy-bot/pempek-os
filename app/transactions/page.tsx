@@ -93,7 +93,7 @@ export default function TransactionsPage() {
   const [phone, setPhone] = useState('08');
   const [showSuggestions, setShowSuggestions] = useState(false);
   // items adalah array yang menyimpan baris-baris produk yang dipilih
-  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
+  const [items, setItems] = useState([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
   const [type, setType] = useState('organik'); 
   const [account, setAccount] = useState('Tunai (Laci)');
   const [paymentStatus, setPaymentStatus] = useState('lunas');
@@ -142,7 +142,7 @@ export default function TransactionsPage() {
 
   // --- FUNGSI DINAMIS UNTUK BARIS PRODUK ---
   const handleAddRow = () => {
-    setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
+    setItems([...items, { id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
   };
 
   // --- FUNGSI PENDETEKSI PINTAR (SMART MATCH) ---
@@ -178,24 +178,20 @@ export default function TransactionsPage() {
       const matchingBatch = availableBatches.find(b => isSmartMatch(item.productName, b.product_name));
 
       return {
-        // Tambahkan Math.random() agar ID selalu unik walau diklik beruntun dengan cepat
         id: Date.now() + Math.floor(Math.random() * 1000) + index,
         batchId: matchingBatch ? matchingBatch.id : '',
         qty: item.qty.toString(),
         priceOption: 'custom', 
-        customPrice: item.bundlePricePerPack.toString()
+        customPrice: item.bundlePricePerPack.toString(),
+        bundleLabel: selectedBundle.name.split(' (')[0] // Otomatis simpan nama "Paket Cicip"
       };
     });
 
-    // PERBAIKAN: Sistem "Add", bukan menimpa
     setItems(prevItems => {
-      // Saring dulu baris kosong (jika ada baris yang belum diisi produk sama sekali, kita buang)
       const existingItems = prevItems.filter(item => item.batchId !== '');
-      // Gabungkan list yang sudah ada dengan paket yang baru diklik
       return [...existingItems, ...newItems];
     });
     
-    // Peringatan otomatis kalau produknya kosong di freezer
     if (newItems.some(item => item.batchId === '')) {
        toast.error(`Ada produk di ${bundleName} yang stoknya habis/tidak ditemukan!`);
     } else {
@@ -229,9 +225,9 @@ export default function TransactionsPage() {
       .filter(b => b.status !== 'Sold Out' && (b.product_name || 'Pempek Campur').trim().toLowerCase() === productNameKey)
       .reduce((sum, b) => sum + Number(b.total_qty || 0), 0);
 
-    // 2. Hitung TOTAL KELUAR (semua transaksi dengan nama produk yang sama)
+    // 2. Hitung TOTAL KELUAR (Cerdas membuang tag Paket sebelum mencocokkan stok)
     const totalOut = transactions
-      .filter(t => (t.product_name || 'Pempek Campur').trim().toLowerCase() === productNameKey)
+      .filter(t => (t.product_name || 'Pempek Campur').split(' | ')[0].trim().toLowerCase() === productNameKey)
       .reduce((sum, t) => sum + Number(t.qty || 0), 0);
 
     return totalIn - totalOut;
@@ -338,7 +334,8 @@ export default function TransactionsPage() {
                 account: account,
                 payment_status: paymentStatus,
                 batch_id: item.batchId,
-                product_name: batch?.product_name || 'Produk',
+                // INI KUNCI RAHASIANYA: Menyelipkan nama paket di database
+                product_name: item.bundleLabel ? `${batch?.product_name || 'Produk'} | ${item.bundleLabel}` : (batch?.product_name || 'Produk'),
                 qty: Number(item.qty),
                 selling_price: price,
                 amount_paid: itemPaid
@@ -477,12 +474,12 @@ export default function TransactionsPage() {
     toast.success('Data dimuat ke form. Silakan edit.');
   };
 
-  // FUNGSI BATAL EDIT
+  // GANTI MENJADI:
   const cancelEdit = () => {
     setEditingId(null);
     setName('');
     setPhone('08');
-    setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '' }]);
+    setItems([{ id: Date.now(), batchId: '', qty: '', priceOption: 'normal', customPrice: '', bundleLabel: '' }]);
     setPaymentStatus('lunas');
     setAmountPaid('');
   };
@@ -892,9 +889,13 @@ export default function TransactionsPage() {
                       <div className="bg-rose-50/50 rounded-xl p-3 mb-3 space-y-2 border border-rose-50 ml-2">
                           {group.items.map((item: any, idx: number) => (
                               <div key={idx} className="flex justify-between items-start text-[10px]">
-                                  <div className="flex gap-1.5">
+                                  <div className="flex gap-1.5 flex-wrap">
                                       <span className="font-black text-slate-700">{item.qty}x</span>
-                                      <span className="font-bold text-slate-500 leading-snug">{item.product_name}</span>
+                                      {/* Desain UI baru pendeteksi Paket */}
+                                      <span className="font-bold text-slate-500 leading-snug">
+                                          {item.product_name.split(' | ')[0]} 
+                                          {item.product_name.includes(' | ') && <span className="text-[8px] text-amber-600 font-black ml-1">({item.product_name.split(' | ')[1]})</span>}
+                                      </span>
                                   </div>
                                   <span className="text-rose-500 font-black ml-2 whitespace-nowrap">{formatIDR(item.sisa)}</span>
                               </div>
@@ -910,10 +911,17 @@ export default function TransactionsPage() {
           </div>
         </section>
         
-        {/* RIWAYAT */}
-        <section className="mt-6">
-          <div className="flex justify-between items-center mb-4 px-1">
-            <h3 className="font-bold text-slate-700 flex items-center"><Calendar className="w-4 h-4 mr-2 text-indigo-500"/> Riwayat</h3>
+        {/* ========================================= */}
+        {/* RIWAYAT DENGAN ZONA WARNA BERBEDA (BLOK)  */}
+        {/* ========================================= */}
+        {/* -mx-5 px-5 fungsinya menarik warna mentok ke ujung layar HP */}
+        {/* bg-slate-100 memberi warna abu-abu yang kontras dengan putih di atasnya */}
+        <section className="mt-12 -mx-5 px-5 pt-10 pb-16 bg-slate-100 rounded-t-[40px] shadow-[inset_0_8px_20px_rgba(0,0,0,0.04)] border-t border-slate-200">
+          
+          <div className="flex justify-between items-center mb-6 px-1">
+            <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-sm">
+                <Calendar className="w-5 h-5 mr-2 text-indigo-500" /> Riwayat
+            </h3>
             <div className="flex space-x-1">
               <select value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="p-1 text-[10px] font-bold border border-slate-200 rounded bg-white text-slate-900 outline-none">
                 {[...Array(12)].map((_, i) => (<option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('id-ID', { month: 'short' })}</option>))}
@@ -1003,8 +1011,12 @@ export default function TransactionsPage() {
                             {group.items.map((t: any) => (
                                 <div key={t.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100/50 group/item transition-all hover:bg-slate-100/80">
                                     <div className="flex-1">
-                                        <p className="text-xs font-bold text-slate-700 leading-snug">{t.qty}x {t.product_name}</p>
-                                        <p className="text-[10px] font-black text-emerald-600/70 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
+                                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                          <p className="text-xs font-bold text-slate-700 leading-snug">{t.qty}x {t.product_name.split(' | ')[0]}</p>
+                                          {/* Badge Kuning jika ini adalah paket */}
+                                          {t.product_name.includes(' | ') && <span className="bg-amber-100 text-amber-700 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">{t.product_name.split(' | ')[1]}</span>}
+                                        </div>
+                                        <p className="text-[10px] font-black text-emerald-600/70">{formatIDR(t.qty * t.selling_price)}</p>
                                     </div>
                                     <div className="flex space-x-1.5 ml-2">
                                         <button onClick={() => handleEdit(t)} className="text-[10px] font-bold text-blue-600 bg-blue-50/80 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition border border-blue-100/50">
@@ -1115,9 +1127,11 @@ export default function TransactionsPage() {
                     {currentReceipt?.items.map((t: any, i: number) => (
                       <div key={i} className="flex justify-between items-start">
                         <div className="max-w-[240px]">
-                          <p className="text-[13px] font-black text-slate-800 leading-snug">{t.product_name}</p>
-                          <p className="text-[11px] font-bold text-slate-500 mt-0.5">{t.qty} x {formatIDR(t.selling_price)}</p>
-                        </div>
+                        {/* Munculkan Nama Paket di atas produknya jika ada */}
+                        {t.product_name.includes(' | ') && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">{t.product_name.split(' | ')[1]}</p>}
+                        <p className="text-[13px] font-black text-slate-800 leading-snug">{t.product_name.split(' | ')[0]}</p>
+                        <p className="text-[11px] font-bold text-slate-500 mt-0.5">{t.qty} x {formatIDR(t.selling_price)}</p>
+                      </div>
                         <p className="text-sm font-black text-slate-800 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
                       </div>
                     ))}
@@ -1256,7 +1270,8 @@ export default function TransactionsPage() {
         {/* ========================================================= */}
         {showResiModal && (
           <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto scrollbar-hide">
+            {/* max-h dikurangi jadi 75vh, dan ditambah pb-12 agar ruang scroll bawah lebih lega */}
+            <div className="bg-white w-full max-w-md rounded-[32px] p-6 pb-12 shadow-2xl animate-in fade-in zoom-in-95 max-h-[75vh] overflow-y-auto scrollbar-hide">
               <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
                 <div>
                   <h2 className="font-black text-slate-800 text-lg flex items-center"><Package className="w-5 h-5 mr-2 text-indigo-500"/> Data Pengiriman</h2>
@@ -1372,27 +1387,25 @@ export default function TransactionsPage() {
               <div id="shipping-label-template" className="bg-white w-[302px] p-0 text-black border border-black" style={{ fontFamily: 'Arial, sans-serif' }}>
                 
                 {/* Header Ekspedisi */}
-                <div className="border-b-[2px] border-black p-2 text-center bg-black text-white">
-                    <h1 className="text-lg font-black tracking-widest uppercase">
+                <div className="border-b-[2px] border-black p-1 text-center bg-black text-white">
+                    {/* Mengubah p-2 menjadi p-1 dan text-lg menjadi text-xs */}
+                    <h1 className="text-xs font-black tracking-widest uppercase">
                         {resiForm.courier === 'MANUAL' ? resiForm.customCourier : resiForm.courier}
                     </h1>
-                </div>
-
-                {/* ID Transaksi */}
-                <div className="p-1.5 border-b-[2px] border-black text-center bg-gray-100">
-                    <p className="text-[11px] font-bold tracking-[0.2em] uppercase">{currentResi?.key ? `UMW-${new Date(currentResi.key).getTime()}` : 'UMW-000000000'}</p>
                 </div>
 
                 {/* PENERIMA (SPASI DIRAPIKAN, ALAMAT DIBESARKAN) */}
                 <div className="p-3 border-b-[2px] border-black">
                     <div className="flex items-start mb-0.5">
-                        <span className="bg-black text-white text-[10px] font-bold px-2 py-1 mr-2 rounded-sm mt-0.5">KE</span>
-                        <h2 className="text-xl font-black uppercase leading-tight tracking-tight">{resiForm.name}</h2>
+                        <span className="bg-black text-white text-[9px] font-bold px-1.5 py-0.5 mr-2 rounded-sm mt-0.5">KE</span>
+                        {/* 1. Nama Penerima diubah jadi text-[12px] */}
+                        <h2 className="text-[11px] font-black uppercase leading-tight tracking-tight">{resiForm.name}</h2>
                     </div>
-                    <p className="text-sm font-black ml-9">{resiForm.phone}</p>
-                    
-                    {/* Alamat Penerima naik jadi text-sm, spasi otomatis hilang kalau patokan kosong */}
-                    <p className="text-sm font-bold leading-snug ml-9 uppercase mt-1">
+                    {/* 2. No HP diubah jadi text-[12px] */}
+                    <p className="text-[11px] font-black ml-8">{resiForm.phone}</p>
+
+                    {/* 3. Alamat diubah jadi text-[10px] */}
+                    <p className="text-[10px] font-bold leading-snug ml-8 uppercase mt-1">
                         {resiForm.detailAddress && <>{resiForm.detailAddress}<br/></>}
                         Kel. {resiForm.subdistrict || '-'}, Kec. {resiForm.district || '-'}<br/>
                         {resiForm.city || 'Kota -'} - {resiForm.postalCode || ''}
@@ -1403,9 +1416,10 @@ export default function TransactionsPage() {
                 <div className="p-3 border-b-[2px] border-black flex items-start">
                     <span className="border border-black text-black text-[10px] font-bold px-2 py-1 mr-2 mt-0.5">DARI</span>
                     <div>
-                        <h2 className="text-sm font-black uppercase leading-tight">Pempek Umiwa (0877-8847-2837)</h2>
-                        {/* Alamat Pengirim naik jadi text-xs dan jarak atasnya ditipiskan */}
-                        <p className="text-xs font-bold leading-tight mt-0.5">
+                        {/* Mengubah text-sm menjadi text-xs dan leading-none */}
+                        <h2 className="text-xs font-bold uppercase leading-none">Pempek Umiwa (0877-8847-2837)</h2>
+                        {/* Mengubah mt-0.5 menjadi mt-0 agar menempel rapat tanpa space */}
+                        <p className="text-[11px] font-bold leading-tight mt-0.5 text-slate-800">
                             Jl. Warga Bakti No. 18, RT.02/RW.11<br/>
                             Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi 40532
                         </p>
@@ -1414,26 +1428,27 @@ export default function TransactionsPage() {
 
                 {/* DAFTAR PRODUK */}
                 <div className="p-3 border-b-[2px] border-black">
-                    <h3 className="text-xs font-black uppercase border-b border-black border-dashed pb-1 mb-2">Isi Paket (Frozen Food)</h3>
-                    <ul className="space-y-1.5">
+                    <h3 className="text-[10px] font-black uppercase border-b border-black border-dashed pb-1 mb-2">Isi Paket (Frozen Food)</h3>
+                    <ul className="space-y-0.5">
                         {currentResi?.items.map((item: any, idx: number) => (
-                            <li key={idx} className="text-xs font-bold flex justify-between">
-                                <span className="flex-1 pr-2 truncate uppercase">{item.product_name}</span>
-                                <span>{item.qty} Pcs</span>
+                            <li key={idx} className="text-[9px] font-bold flex justify-between leading-tight mb-0.5">
+                                {/* Otomatis menambah (Paket Cicip) di ujung nama produk agar kurir/customer tahu */}
+                                <span className="flex-1 pr-2 uppercase">
+                                    {item.product_name.split(' | ')[0]} {item.product_name.includes(' | ') && `(${item.product_name.split(' | ')[1]})`}
+                                </span>
+                                <span className="shrink-0">{item.qty} Pcs</span>
                             </li>
                         ))}
                     </ul>
                 </div>
 
                 {/* FOOTER */}
-                <div className="p-4 text-center">
-                    <div className="border-2 border-black p-2.5 mb-4">
-                        <p className="text-sm font-black uppercase tracking-widest">⚠️ FROZEN FOOD ⚠️</p>
-                    </div>
-                    <div className="flex justify-center items-center gap-2.5">
-                        <img src="/logo-umiwa.jpg" className="w-10 h-10 rounded-full grayscale contrast-200 border-[1.5px] border-black" alt="Logo"/>
-                        <p className="text-[10px] font-bold uppercase tracking-widest">Pempek Umiwa</p>
-                    </div>
+                {/* 1. Mengubah mt-1 menjadi mt-0 (menghilangkan jeda atas) dan menggunakan pt-1 pb-1 */}
+                <div className="pt-1 pb-1 text-center mt-0">
+                    {/* 2. Menambahkan leading-none agar tinggi ruang font benar-benar flat mepet garis */}
+                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 leading-none">
+                        Diproduksi oleh Pempek Umiwa
+                    </p>
                 </div>
 
               </div>
