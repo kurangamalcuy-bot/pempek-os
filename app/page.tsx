@@ -82,11 +82,15 @@ export default function Dashboard() {
 
   const trxToday = transactions.filter(t => new Date(t.created_at).toLocaleDateString('en-CA') === todayStr);
   const expToday = expenses.filter(e => new Date(e.created_at).toLocaleDateString('en-CA') === todayStr && e.category !== 'capex');
-  const revToday = trxToday.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
+  const revToday = trxToday.reduce((acc, curr) => 
+    acc + (curr.qty * curr.selling_price) + (curr.ongkir || 0) + (curr.packing_fee || 0), 0
+  );
   const qtyToday = trxToday.reduce((acc, curr) => acc + curr.qty, 0);
   
   const trxThisMonth = transactions.filter(t => new Date(t.created_at).getMonth() === currentMonth && new Date(t.created_at).getFullYear() === currentYear);
-  const revThisMonth = trxThisMonth.reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
+  const revThisMonth = trxThisMonth.reduce((acc, curr) => 
+    acc + (curr.qty * curr.selling_price) + (curr.ongkir || 0) + (curr.packing_fee || 0), 0
+  );
 
   const adsExpensesThisMonth = expenses.filter(e => new Date(e.created_at).getMonth() === currentMonth && new Date(e.created_at).getFullYear() === currentYear && (e.category === 'ads' || e.category === 'marketing')).reduce((acc, curr) => acc + curr.amount, 0);
   const qtyFromMetaAdsThisMonth = trxThisMonth.filter(t => t.type === 'meta_ads').reduce((acc, curr) => acc + curr.qty, 0);

@@ -22,6 +22,7 @@ export default function TransactionsPage() {
   const [ongkir, setOngkir] = useState(0);
   const [packingFee, setPackingFee] = useState(0);
   const [customOngkir, setCustomOngkir] = useState('');
+  const [customPacking, setCustomPacking] = useState('');
   // TAMBAHKAN KODE INI TEPAT DI BAWAHNYA:
   // --- STATE UNTUK MODAL EDIT NAMA ---
   const [isEditNameModalOpen, setIsEditNameModalOpen] = useState(false);
@@ -278,22 +279,24 @@ export default function TransactionsPage() {
   const availableBatches = Array.from(uniqueProductsMap.values())
     .filter(product => product.isArchived === false);
 
-  // --- HITUNGAN TOTAL TAGIHAN ---
+  // --- HITUNGAN TOTAL TAGIHAN BARU (TERMASUK ONGKIR & PACKING) ---
   const calculateGrandTotal = () => {
-    return items.reduce((total, item) => {
+    const itemsTotal = items.reduce((total, item) => {
       if (!item.batchId || !item.qty) return total;
-      
       let price = 0;
       if (item.priceOption === 'custom') {
         price = Number(item.customPrice) || 0;
       } else {
         const batch = batches.find(b => b.id === item.batchId);
-        // Fallback to normal price if reseller/online is missing
         price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
       }
-      
       return total + (Number(item.qty) * price);
     }, 0);
+
+    const finalOngkir = customOngkir ? Number(customOngkir) : (ongkir === -1 ? 0 : ongkir);
+    const finalPacking = customPacking ? Number(customPacking) : (packingFee === -1 ? 0 : packingFee);
+
+    return itemsTotal + finalOngkir + finalPacking;
   };
 
   const grandTotal = calculateGrandTotal();
@@ -319,16 +322,21 @@ export default function TransactionsPage() {
 
     try {
         let remainingDP = Number(amountPaid) || 0;
+        
+        const finalOngkir = customOngkir ? Number(customOngkir) : (ongkir === -1 ? 0 : ongkir);
+        const finalPacking = customPacking ? Number(customPacking) : (packingFee === -1 ? 0 : packingFee);
 
-        const payload = validItems.map(item => {
+        const payload = validItems.map((item, index) => {
             const batch = batches.find(b => b.id === item.batchId);
             let price = 0;
-            if (item.priceOption === 'custom') {
-               price = Number(item.customPrice) || 0;
-            } else {
-               price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
-            }
-            const subtotal = Number(item.qty) * price;
+            if (item.priceOption === 'custom') price = Number(item.customPrice) || 0;
+            else price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
+            
+            // Trik Cerdas: Biaya ongkir & packing HANYA dibebankan pada baris produk PERTAMA agar tidak dobel di database
+            const itemOngkir = index === 0 ? finalOngkir : 0;
+            const itemPacking = index === 0 ? finalPacking : 0;
+
+            const subtotal = (Number(item.qty) * price) + itemOngkir + itemPacking;
 
             let itemPaid = 0;
             if (paymentStatus === 'lunas') {
@@ -350,11 +358,12 @@ export default function TransactionsPage() {
                 account: account,
                 payment_status: paymentStatus,
                 batch_id: item.batchId,
-                // INI KUNCI RAHASIANYA: Menyelipkan nama paket di database
                 product_name: item.bundleLabel ? `${batch?.product_name || 'Produk'} | ${item.bundleLabel}` : (batch?.product_name || 'Produk'),
                 qty: Number(item.qty),
                 selling_price: price,
-                amount_paid: itemPaid
+                amount_paid: itemPaid,
+                ongkir: itemOngkir,       // <--- TERSIMPAN DI DATABASE
+                packing_fee: itemPacking  // <--- TERSIMPAN DI DATABASE
             };
         });
 
@@ -374,8 +383,13 @@ export default function TransactionsPage() {
         fetchData();
 
     } catch (error: any) {
-        console.error("Error:", error);
-        toast.error('Gagal menyimpan transaksi!');
+        console.error("--- DETAIL ERROR SUPABASE ---");
+        console.error("Pesan Error:", error?.message || error);
+        if (error?.details) console.error("Detail Kolom:", error.details);
+        if (error?.hint) console.error("Petunjuk:", error.hint);
+        
+        const pesanSpesifik = error?.message || "Cek apakah kolom 'ongkir' & 'packing_fee' sudah dibuat di Supabase!";
+        toast.error(`Gagal menyimpan: ${pesanSpesifik}`, { duration: 5000 });
     } finally {
         setLoading(false);
     }
@@ -387,7 +401,8 @@ export default function TransactionsPage() {
     try {
         // Melunasi semua baris pesanan milik orang ini ke database secara serentak
         await Promise.all(items.map(t => {
-            const totalBill = t.qty * t.selling_price;
+            const totalBill = (t.qty * t.selling_price) + (t.ongkir || 0) + (t.packing_fee || 0);
+            const sisa = totalBill - t.amount_paid;
             return supabase.from('transactions')
                 .update({ payment_status: 'lunas', amount_paid: totalBill })
                 .eq('id', t.id);
@@ -926,6 +941,61 @@ export default function TransactionsPage() {
              </div>
           </div>
 
+          {/* --- 3.5 BIAYA ONGKIR & PACKING (DIPINDAH KE DEPAN) --- */}
+          <div className="grid grid-cols-2 gap-3">
+              {/* Ongkir */}
+              <div className="bg-white p-3.5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col justify-center">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Ongkos Kirim</label>
+                  <div className="relative bg-slate-50 border border-slate-200 rounded-xl group transition">
+                      <select 
+                          value={customOngkir ? 'manual' : ongkir.toString()} 
+                          onChange={(e) => {
+                              if (e.target.value === 'manual') { setOngkir(-1); setCustomOngkir(''); } 
+                              else { setOngkir(Number(e.target.value)); setCustomOngkir(''); }
+                          }} 
+                          className="w-full bg-transparent p-2.5 pr-8 text-slate-800 text-xs font-bold outline-none appearance-none cursor-pointer relative z-10"
+                      >
+                          <option value="0">Rp 0 (Tanpa Ongkir)</option>
+                          <option value="9000">Rp 9.000</option>
+                          <option value="12000">Rp 12.000</option>
+                          <option value="manual">Ketik Manual...</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-0">
+                          <div className="w-2.5 h-2.5 border-b-2 border-r-2 border-emerald-500 transform rotate-45"></div>
+                      </div>
+                  </div>
+                  {(ongkir === -1 || customOngkir !== '') && (
+                      <input type="number" placeholder="Nominal..." value={customOngkir} onChange={e => setCustomOngkir(e.target.value)} className="w-full mt-2 p-2 bg-white border border-emerald-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 animate-in zoom-in-95" />
+                  )}
+              </div>
+
+              {/* Packing */}
+              <div className="bg-white p-3.5 rounded-[24px] shadow-sm border border-slate-100 flex flex-col justify-center">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Biaya Packing</label>
+                  <div className="relative bg-slate-50 border border-slate-200 rounded-xl group transition">
+                      <select 
+                          value={customPacking ? 'manual' : packingFee.toString()} 
+                          onChange={(e) => {
+                              if (e.target.value === 'manual') { setPackingFee(-1); setCustomPacking(''); } 
+                              else { setPackingFee(Number(e.target.value)); setCustomPacking(''); }
+                          }} 
+                          className="w-full bg-transparent p-2.5 pr-8 text-slate-800 text-xs font-bold outline-none appearance-none cursor-pointer relative z-10"
+                      >
+                          <option value="0">Rp 0 (Tanpa Packing)</option>
+                          <option value="2500">Rp 2.500</option>
+                          <option value="3000">Rp 3.000</option>
+                          <option value="manual">Ketik Manual...</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-0">
+                          <div className="w-2.5 h-2.5 border-b-2 border-r-2 border-emerald-500 transform rotate-45"></div>
+                      </div>
+                  </div>
+                  {(packingFee === -1 || customPacking !== '') && (
+                      <input type="number" placeholder="Nominal..." value={customPacking} onChange={e => setCustomPacking(e.target.value)} className="w-full mt-2 p-2 bg-white border border-emerald-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500 animate-in zoom-in-95" />
+                  )}
+              </div>
+          </div>
+
           {/* --- 4. STICKY BOTTOM ACTION BAR (FIXED CUT-OFF) --- */}
           {/* bottom-16 digunakan agar bar ini mengambang di ATAS BottomNav utama */}
           <div className="fixed bottom-[84px] left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-100 shadow-[0_-10px_25px_rgba(0,0,0,0.05)]">
@@ -981,13 +1051,18 @@ export default function TransactionsPage() {
           {activeTab === 'kasbon' && (
             <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
               {(() => {
+                  // 1. LOGIKA BARU: Tambahkan penampung untuk totalOngkir dan totalPacking
                   const groupedPiutang = Object.values(piutangList.reduce((acc: any, t) => {
                       const key = t.customer_name.trim().toLowerCase();
-                      if (!acc[key]) acc[key] = { name: t.customer_name, phone: t.customer_phone, items: [], totalSisa: 0 };
-                      const totalBill = t.qty * t.selling_price;
+                      if (!acc[key]) acc[key] = { name: t.customer_name, phone: t.customer_phone, items: [], totalSisa: 0, totalOngkir: 0, totalPacking: 0 };
+                      
+                      const totalBill = (t.qty * t.selling_price) + (t.ongkir || 0) + (t.packing_fee || 0);
                       const sisa = totalBill - t.amount_paid;
+                      
                       acc[key].items.push({ ...t, sisa });
                       acc[key].totalSisa += sisa;
+                      acc[key].totalOngkir += (t.ongkir || 0);
+                      acc[key].totalPacking += (t.packing_fee || 0);
                       return acc;
                   }, {}));
 
@@ -1010,6 +1085,7 @@ export default function TransactionsPage() {
                         </div>
 
                         <div className="bg-rose-50/50 rounded-xl p-3 mb-3 space-y-2 border border-rose-50 ml-2">
+                            {/* DAFTAR PRODUK */}
                             {group.items.map((item: any, idx: number) => (
                                 <div key={idx} className="flex justify-between items-start text-[10px]">
                                     <div className="flex gap-1.5 flex-wrap">
@@ -1019,10 +1095,31 @@ export default function TransactionsPage() {
                                             {item.product_name.includes(' | ') && <span className="text-[8px] text-amber-600 font-black ml-1">({item.product_name.split(' | ')[1]})</span>}
                                         </span>
                                     </div>
-                                    <span className="text-rose-500 font-black ml-2 whitespace-nowrap">{formatIDR(item.sisa)}</span>
+                                    {/* Harga difix ke harga asli produk supaya transparan */}
+                                    <span className="text-slate-600 font-black ml-2 whitespace-nowrap">{formatIDR(item.qty * item.selling_price)}</span>
                                 </div>
                             ))}
+
+                            {/* TAMBAHAN INFO ONGKIR & PACKING JIKA ADA */}
+                            {(group.totalOngkir > 0 || group.totalPacking > 0) && (
+                                <div className="mt-2 pt-2 border-t-[2px] border-dashed border-rose-200/50 space-y-1.5">
+                                    {group.totalOngkir > 0 && (
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <span className="font-bold text-slate-500 uppercase tracking-widest">Ongkos Kirim</span>
+                                            <span className="text-slate-600 font-black">{formatIDR(group.totalOngkir)}</span>
+                                        </div>
+                                    )}
+                                    {group.totalPacking > 0 && (
+                                        <div className="flex justify-between items-center text-[10px]">
+                                            <span className="font-bold text-slate-500 uppercase tracking-widest">Biaya Packing</span>
+                                            <span className="text-slate-600 font-black">{formatIDR(group.totalPacking)}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
+
+                        {/* TOMBOL LUNASI (Biarkan persis seperti aslinya di bawah ini) */}
 
                         <button onClick={() => handleLunasGroup(group.items, group.name)} className="w-full ml-1 bg-emerald-50 text-emerald-600 py-3 rounded-xl text-[11px] font-black flex items-center justify-center hover:bg-emerald-100 transition active:scale-95 border border-emerald-100">
                             {/* Hapus .split(' ')[0] supaya nama tidak terpotong spasi */}
@@ -1052,9 +1149,11 @@ export default function TransactionsPage() {
                 {(() => {
                     const groupedHistory = Object.values(filteredTransactions.reduce((acc: any, t) => {
                         const key = t.created_at; 
-                        if (!acc[key]) acc[key] = { key: t.created_at, customer_name: t.customer_name, total: 0, items: [] };
+                        if (!acc[key]) acc[key] = { key: t.created_at, customer_name: t.customer_name, total: 0, items: [], ongkir: 0, packing_fee: 0 };
                         acc[key].items.push(t);
-                        acc[key].total += (t.qty * t.selling_price);
+                        acc[key].total += (t.qty * t.selling_price) + (t.ongkir || 0) + (t.packing_fee || 0);
+                        acc[key].ongkir += (t.ongkir || 0);
+                        acc[key].packing_fee += (t.packing_fee || 0);
                         return acc;
                     }, {})).sort((a: any, b: any) => new Date(b.key).getTime() - new Date(a.key).getTime());
 
@@ -1082,7 +1181,11 @@ export default function TransactionsPage() {
                                     
                                     <div className="flex flex-wrap gap-2">
                                         <button 
-                                            onClick={() => { setCurrentReceipt(group); setShowPrintModal(true); }}
+                                            onClick={() => { 
+                                                setCurrentReceipt(group); 
+                                                // Langsung cetak struk tanpa lewat modal biaya tambahan
+                                                setTimeout(() => handleDownloadReceipt(), 100); 
+                                            }}
                                             className="flex items-center text-[9px] font-black bg-emerald-50 text-emerald-700 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-emerald-100 transition border border-emerald-100"
                                         >
                                             <Printer className="w-3 h-3 mr-1" /> STRUK
@@ -1109,6 +1212,7 @@ export default function TransactionsPage() {
                             </div>
 
                             <div className="space-y-2">
+                                {/* Daftar Item Produk */}
                                 {group.items.map((t: any) => (
                                     <div key={t.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100/50 group/item transition-all hover:bg-slate-100/80">
                                         <div className="flex-1">
@@ -1124,6 +1228,24 @@ export default function TransactionsPage() {
                                         </div>
                                     </div>
                                 ))}
+
+                                {/* Rincian Tambahan Ongkir & Packing (MUNCUL JIKA ADA) */}
+                                {(group.ongkir > 0 || group.packing_fee > 0) && (
+                                    <div className="mt-2 pt-2 border-t-[2px] border-dashed border-slate-100 px-2 space-y-1.5">
+                                        {group.ongkir > 0 && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ongkos Kirim</span>
+                                                <span className="text-[10px] font-black text-slate-600">{formatIDR(group.ongkir)}</span>
+                                            </div>
+                                        )}
+                                        {group.packing_fee > 0 && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Biaya Packing</span>
+                                                <span className="text-[10px] font-black text-slate-600">{formatIDR(group.packing_fee)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ));
@@ -1132,148 +1254,106 @@ export default function TransactionsPage() {
             </div>
           )}
         </section>
-        {/* --- MODAL INPUT BIAYA & DESAIN STRUK TERSEMBUNYI --- */}
-        {showPrintModal && (
-          <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in fade-in zoom-in-95">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="font-black text-slate-800 text-lg">Biaya Tambahan</h2>
-                <button onClick={() => setShowPrintModal(false)} className="p-2 bg-slate-100 rounded-full hover:bg-rose-100 hover:text-rose-600 transition"><X className="w-4 h-4"/></button>
-              </div>
-
-              <div className="space-y-4">
-                {/* Pilihan Ongkir */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Biaya Ongkir</label>
-                  <div className="grid grid-cols-3 gap-2 mb-2">
-                    {[0, 9000].map(val => (
-                      <button key={val} onClick={() => {setOngkir(val); setCustomOngkir('')}} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === val && !customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                        {val === 0 ? 'Gratis' : '9 Ribu'}
-                      </button>
-                    ))}
-                    <button onClick={() => setOngkir(-1)} className={`py-2 text-xs font-bold rounded-xl border transition ${ongkir === -1 || customOngkir ? 'bg-emerald-600 border-emerald-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>Manual</button>
-                  </div>
-                  {(ongkir === -1 || customOngkir !== '') && (
-                    <div className="animate-in fade-in zoom-in-95">
-                       <input type="number" value={customOngkir} onChange={(e) => setCustomOngkir(e.target.value)} placeholder="Ketik nominal ongkir (Rp)..." className="w-full p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl text-sm font-bold text-emerald-900 outline-none focus:border-emerald-500 placeholder-emerald-300" />
-                    </div>
-                  )}
+        {/* ========================================================= */}
+        {/* TEMPLATE STRUK (BERDIRI SENDIRI DI LUAR MODAL AGAR BISA DICETAK) */}
+        {/* ========================================================= */}
+        <div className="fixed left-[-9999px] top-0">
+            <div id="receipt-template" className="bg-white w-[420px] p-8" style={{ fontFamily: 'sans-serif' }}>
+              
+              {/* Header Struk & Logo */}
+              <div className="text-center mb-6">
+                <div className="flex justify-center mb-3">
+                  <img 
+                    src="/logo-umiwa.jpg" 
+                    alt="Logo Pempek Umiwa" 
+                    loading="eager" 
+                    decoding="sync" 
+                    crossOrigin="anonymous"
+                    className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover" 
+                  />
                 </div>
-
-                {/* Packing Fee */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Biaya Packing (Opsional)</label>
-                  <input type="number" value={packingFee || ''} onChange={(e) => setPackingFee(Number(e.target.value))} placeholder="Ketik nominal packing (Rp)..." className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 placeholder-slate-300" />
-                </div>
-
-                <button onClick={handleDownloadReceipt} disabled={loading} className="w-full mt-4 bg-slate-900 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center shadow-lg active:scale-95 transition hover:bg-slate-800">
-                  <Download className="w-4 h-4 mr-2" /> {loading ? 'MEMPROSES...' : 'DOWNLOAD STRUK PNG'}
-                </button>
-              </div>
-            </div>
-
-            {/* TEMPLATE STRUK (KITA SEMBUNYIKAN DI LUAR LAYAR) */}
-            {/* Template ini yang akan 'difoto' oleh sistem menjadi PNG */}
-            <div className="fixed left-[-9999px] top-0">
-              <div id="receipt-template" className="bg-white w-[420px] p-8" style={{ fontFamily: 'sans-serif' }}>
+                <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-0.5">PEMPEK UMIWA</h1>
+                <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase mb-2">Frozen Food Pempek Asli Ikan Tenggiri 100%</p>
                 
-                {/* Header Struk & Logo */}
-                <div className="text-center mb-6">
-                  <div className="flex justify-center mb-3">
-                    <img 
-                      src="/logo-umiwa.jpg" 
-                      alt="Logo Pempek Umiwa" 
-                      loading="eager" 
-                      decoding="sync" 
-                      crossOrigin="anonymous"
-                      className="w-24 h-24 rounded-full border-[3px] border-emerald-100 object-cover" 
-                    />
+                {/* Alamat */}
+                <p className="text-[9px] font-bold text-slate-400 leading-relaxed max-w-[300px] mx-auto uppercase tracking-tight">
+                  Jl Warga Bakti No.18, RT.02, RW.11, Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi, 40532
+                </p>
+              </div>
+
+              {/* Info Pelanggan & Waktu Transaksi */}
+              <div className="bg-slate-50 rounded-xl p-3.5 mb-6 border border-slate-100 flex justify-between items-center">
+                  <div className="text-left flex-1">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pelanggan</p>
+                      <p className="text-[13px] font-black text-emerald-700 uppercase truncate leading-tight pr-2">
+                          {currentReceipt?.customer_name || currentReceipt?.items?.[0]?.customer_name || 'Hamba Allah'}
+                      </p>
                   </div>
-                  <h1 className="text-3xl font-black text-emerald-700 tracking-tighter mb-0.5">PEMPEK UMIWA</h1>
-                  <p className="text-[10px] font-bold text-emerald-600 tracking-widest uppercase mb-2">Frozen Food Pempek Asli Ikan Tenggiri 100%</p>
-                  
-                  {/* Alamat Tanpa Kotak (Langsung di atas background putih) */}
-                  <p className="text-[9px] font-bold text-slate-400 leading-relaxed max-w-[300px] mx-auto uppercase tracking-tight">
-                    Jl Warga Bakti No.18, RT.02, RW.11, Kel. Leuwigajah, Kec. Cimahi Selatan, Kota Cimahi, 40532
-                  </p>
-                </div>
+                  <div className="text-right border-l border-slate-200 pl-3">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Waktu Transaksi</p>
+                      <p className="text-[10px] font-bold text-slate-700">
+                          {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                      <p className="text-[9px] font-bold text-slate-500 mt-0.5">
+                          {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
+                      </p>
+                  </div>
+              </div>
 
-                {/* Info Pelanggan & Waktu Transaksi */}
-                <div className="bg-slate-50 rounded-xl p-3.5 mb-6 border border-slate-100 flex justify-between items-center">
-                    <div className="text-left flex-1">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Pelanggan</p>
-                        <p className="text-[13px] font-black text-emerald-700 uppercase truncate leading-tight pr-2">
-                            {currentReceipt?.customer_name || currentReceipt?.items?.[0]?.customer_name || 'Hamba Allah'}
-                        </p>
-                    </div>
-                    <div className="text-right border-l border-slate-200 pl-3">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Waktu Transaksi</p>
-                        <p className="text-[10px] font-bold text-slate-700">
-                            {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </p>
-                        <p className="text-[9px] font-bold text-slate-500 mt-0.5">
-                            {new Date(currentReceipt?.items?.[0]?.created_at || currentReceipt?.key).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
-                        </p>
-                    </div>
-                </div>
-
-                {/* Daftar Belanjaan */}
-                <div className="mb-6">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-3">Pesanan</p>
-                  <div className="space-y-4">
-                    {currentReceipt?.items.map((t: any, i: number) => (
-                      <div key={i} className="flex justify-between items-start">
-                        <div className="max-w-[240px]">
-                        {/* Munculkan Nama Paket di atas produknya jika ada */}
+              {/* Daftar Belanjaan */}
+              <div className="mb-6">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-3">Pesanan</p>
+                <div className="space-y-4">
+                  {currentReceipt?.items.map((t: any, i: number) => (
+                    <div key={i} className="flex justify-between items-start">
+                      <div className="max-w-[240px]">
                         {t.product_name.includes(' | ') && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">{t.product_name.split(' | ')[1]}</p>}
                         <p className="text-[13px] font-black text-slate-800 leading-snug">{t.product_name.split(' | ')[0]}</p>
                         <p className="text-[11px] font-bold text-slate-500 mt-0.5">{t.qty} x {formatIDR(t.selling_price)}</p>
                       </div>
-                        <p className="text-sm font-black text-slate-800 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Rincian Biaya & Total */}
-                <div className="border-t-[2px] border-dashed border-slate-200 pt-4 space-y-2.5">
-                  <div className="flex justify-between text-xs font-bold text-slate-500">
-                    <span>Subtotal Belanja</span>
-                    <span>{formatIDR(currentReceipt?.total || 0)}</span>
-                  </div>
-                  {(Number(customOngkir) > 0 || ongkir > 0) && (
-                    <div className="flex justify-between text-xs font-bold text-slate-500">
-                      <span>Ongkos Kirim</span>
-                      <span>{formatIDR(Number(customOngkir) || (ongkir === -1 ? 0 : ongkir))}</span>
+                      <p className="text-sm font-black text-slate-800 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
                     </div>
-                  )}
-                  {packingFee > 0 && (
-                    <div className="flex justify-between text-xs font-bold text-slate-500">
-                      <span>Biaya Packing Tambahan</span>
-                      <span>{formatIDR(packingFee)}</span>
-                    </div>
-                  )}
-                  
-                  {/* Grand Total */}
-                  <div className="flex justify-between items-end pt-3 mt-3 border-t-[3px] border-emerald-600">
-                    <span className="text-[11px] font-black text-emerald-800 uppercase tracking-widest mb-1">Total Tagihan</span>
-                    <span className="text-2xl font-black text-emerald-600 tracking-tight">
-                        {formatIDR((currentReceipt?.total || 0) + (Number(customOngkir) || (ongkir === -1 ? 0 : ongkir)) + packingFee)}
-                    </span>
-                  </div>
+                  ))}
                 </div>
-
-                {/* Footer Pesan Manis */}
-                <div className="text-center mt-10 pt-6 border-t border-slate-100">
-                  <p className="text-xs font-black text-emerald-600 mb-1.5 italic">"Terima kasih sudah berbelanja!"</p>
-                  <p className="text-[9px] font-bold text-slate-400 tracking-widest">Instagram: @pempekumiwa</p>
-                  <p className="text-[9px] font-bold text-slate-400 tracking-widest">Whatsapp: 0877-8847-2837</p>
-                </div>
-                
               </div>
+
+              {/* Rincian Biaya & Total */}
+              <div className="border-t-[2px] border-dashed border-slate-200 pt-4 space-y-2.5">
+                <div className="flex justify-between text-xs font-bold text-slate-500">
+                  <span>Subtotal Belanja</span>
+                  <span>{formatIDR((currentReceipt?.total || 0) - (currentReceipt?.ongkir || 0) - (currentReceipt?.packing_fee || 0))}</span>
+                </div>
+                {currentReceipt?.ongkir > 0 && (
+                  <div className="flex justify-between text-xs font-bold text-slate-500">
+                    <span>Ongkos Kirim</span>
+                    <span>{formatIDR(currentReceipt.ongkir)}</span>
+                  </div>
+                )}
+                {currentReceipt?.packing_fee > 0 && (
+                  <div className="flex justify-between text-xs font-bold text-slate-500">
+                    <span>Biaya Packing Tambahan</span>
+                    <span>{formatIDR(currentReceipt.packing_fee)}</span>
+                  </div>
+                )}
+                
+                {/* Grand Total */}
+                <div className="flex justify-between items-end pt-3 mt-3 border-t-[3px] border-emerald-600">
+                  <span className="text-[11px] font-black text-emerald-800 uppercase tracking-widest mb-1">Total Tagihan</span>
+                  <span className="text-2xl font-black text-emerald-600 tracking-tight">
+                      {formatIDR(currentReceipt?.total || 0)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Footer Pesan Manis */}
+              <div className="text-center mt-10 pt-6 border-t border-slate-100">
+                <p className="text-xs font-black text-emerald-600 mb-1.5 italic">"Terima kasih sudah berbelanja!"</p>
+                <p className="text-[9px] font-bold text-slate-400 tracking-widest">Instagram: @pempekumiwa</p>
+                <p className="text-[9px] font-bold text-slate-400 tracking-widest">Whatsapp: 0877-8847-2837</p>
+              </div>
+              
             </div>
-          </div>
-        )}
+        </div>
 
         {/* ========================================================= */}
         {/* MODAL PREVIEW GAMBAR STRUK (TAMPIL FULL SCREEN DI HP/WEB) */}

@@ -25,7 +25,7 @@ export default function FinancePage() {
   const [category, setCategory] = useState('operational');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
-  const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [entryDate, setEntryDate] = useState(new Date().toLocaleDateString('en-CA'));
   const [account, setAccount] = useState('Tunai (Laci)');
   const [paymentStatus, setPaymentStatus] = useState('Lunas');
 
@@ -36,7 +36,7 @@ export default function FinancePage() {
   const fetchData = async () => {
     setLoading(true);
     const { data: expData } = await supabase.from('expenses').select('*').order('entry_date', { ascending: false });
-    const { data: trxData } = await supabase.from('transactions').select('*');
+    const { data: trxData } = await supabase.from('transactions').select('account, amount_paid, qty, selling_price');
     if (expData) setExpenses(expData);
     if (trxData) setTransactions(trxData);
     setLoading(false);
@@ -44,9 +44,13 @@ export default function FinancePage() {
 
   // --- LOGIKA SALDO PER DOMPET ---
   const calculateBalance = (accName: string) => {
-    const trxIn = transactions.filter(t => t.account === accName).reduce((acc, curr) => acc + (curr.qty * curr.selling_price), 0);
+    // PERBAIKAN: Gunakan 'amount_paid' agar kasbon/utang tidak dianggap uang di laci.
+    // Bonusnya: nominal ongkir & packing fee otomatis ikut terhitung karena sudah tergabung di amount_paid!
+    const trxIn = transactions.filter(t => t.account === accName).reduce((acc, curr) => acc + (curr.amount_paid || 0), 0);
+    
     const expIn = expenses.filter(e => e.account === accName && e.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
     const expOut = expenses.filter(e => e.account === accName && e.type === 'expense' && e.payment_status === 'Lunas').reduce((acc, curr) => acc + curr.amount, 0);
+    
     return trxIn + expIn - expOut;
   };
 
@@ -206,8 +210,12 @@ export default function FinancePage() {
 
             <input type="number" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Nominal (Rp)" className="w-full p-3 border border-slate-200 rounded-xl text-sm font-bold outline-none text-slate-900" />
             <input type="text" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Keterangan (Cth: Beli bahan 100 pack / Modal Awal)" className="w-full p-3 border border-slate-200 rounded-xl text-sm outline-none" />
-            <button type="submit" className={`w-full text-white font-bold p-3 rounded-xl shadow-lg transition-transform active:scale-95 ${type === 'income' ? 'bg-emerald-600' : 'bg-slate-900'}`}>
-               {editingId ? 'Update Data' : 'Simpan Transaksi'}
+            <button 
+                type="submit" 
+                disabled={loading}
+                className={`w-full text-white font-bold p-3 rounded-xl shadow-lg transition-all active:scale-95 flex justify-center items-center ${type === 'income' ? 'bg-emerald-600' : 'bg-slate-900'} ${loading ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+            >
+               {loading ? 'Memproses...' : (editingId ? 'Update Data' : 'Simpan Transaksi')}
             </button>
           </form>
         </section>
