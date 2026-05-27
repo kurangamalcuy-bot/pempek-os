@@ -254,6 +254,9 @@ export default function TransactionsPage() {
   const uniqueProductsMap = new Map();
 
   batches.forEach(b => {
+    // PENYELAMAT: Sembunyikan stok basi agar tidak bisa diklik Kasir
+    if (b.status === 'Rusak/Basi') return; 
+    
     const rawName = b.product_name || 'Pempek Campur';
     const key = rawName.trim().toLowerCase();
     
@@ -301,11 +304,10 @@ export default function TransactionsPage() {
 
   const grandTotal = calculateGrandTotal();
 
-  // --- FUNGSI SUBMIT TRANSAKSI UTAMA ---
+  // --- FUNGSI SUBMIT TRANSAKSI UTAMA (DENGAN OTAK FIFO) ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validasi: Cek apakah ada produk yang kosong atau qty melebihi stok
+
     const validItems = items.filter(item => item.batchId && item.qty);
     if (validItems.length === 0) {
       return toast.error('Pilih minimal 1 produk dan masukkan jumlahnya!');
@@ -315,43 +317,25 @@ export default function TransactionsPage() {
     validItems.forEach(item => {
         if (Number(item.qty) > getRemainingStock(item.batchId)) hasError = true;
     });
-
     if (hasError) return toast.error('Ada jumlah produk yang melebihi sisa stok!');
 
     setLoading(true);
 
     try {
         let remainingDP = Number(amountPaid) || 0;
-        
         const finalOngkir = customOngkir ? Number(customOngkir) : (ongkir === -1 ? 0 : ongkir);
         const finalPacking = customPacking ? Number(customPacking) : (packingFee === -1 ? 0 : packingFee);
 
-        const payload = validItems.map((item, index) => {
+        if (editingId) {
+            // JIKA MODE EDIT: Update baris yang diedit tanpa memecah FIFO
+            const item = validItems[0];
             const batch = batches.find(b => b.id === item.batchId);
-            let price = 0;
-            if (item.priceOption === 'custom') price = Number(item.customPrice) || 0;
-            else price = Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0;
-            
-            // Trik Cerdas: Biaya ongkir & packing HANYA dibebankan pada baris produk PERTAMA agar tidak dobel di database
-            const itemOngkir = index === 0 ? finalOngkir : 0;
-            const itemPacking = index === 0 ? finalPacking : 0;
+            let price = item.priceOption === 'custom' ? (Number(item.customPrice) || 0) : (Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0);
 
-            const subtotal = (Number(item.qty) * price) + itemOngkir + itemPacking;
+            const subtotal = (Number(item.qty) * price) + finalOngkir + finalPacking;
+            let itemPaid = paymentStatus === 'lunas' ? subtotal : Math.min(remainingDP, subtotal);
 
-            let itemPaid = 0;
-            if (paymentStatus === 'lunas') {
-                itemPaid = subtotal;
-            } else {
-                if (remainingDP >= subtotal) {
-                    itemPaid = subtotal;
-                    remainingDP -= subtotal;
-                } else {
-                    itemPaid = remainingDP;
-                    remainingDP = 0;
-                }
-            }
-
-            return {
+            const payload = {
                 customer_name: name || 'Pelanggan',
                 customer_phone: phone,
                 type: type,
@@ -362,34 +346,120 @@ export default function TransactionsPage() {
                 qty: Number(item.qty),
                 selling_price: price,
                 amount_paid: itemPaid,
-                ongkir: itemOngkir,       // <--- TERSIMPAN DI DATABASE
-                packing_fee: itemPacking  // <--- TERSIMPAN DI DATABASE
+                ongkir: finalOngkir,
+                packing_fee: finalPacking
             };
-        });
 
-        if (editingId) {
-            // JIKA SEDANG EDIT: Gunakan .update()
-            const { error } = await supabase.from('transactions').update(payload[0]).eq('id', editingId);
+            const { error } = await supabase.from('transactions').update(payload).eq('id', editingId);
             if (error) throw error;
             toast.success('Transaksi berhasil diperbarui!');
         } else {
-            // JIKA TRANSAKSI BARU: Gunakan .insert()
-            const { error } = await supabase.from('transactions').insert(payload);
+            // JIKA TRANSAKSI BARU: GUNAKAN OTAK FIFO (Pecah tagihan ke kardus lama duluan)
+            const payloadsToInsert = [];
+            let isFirstRecord = true;
+
+            for (const item of validItems) {
+                const representativeBatch = batches.find(b => b.id === item.batchId);
+                const targetProductName = (representativeBatch?.product_name || '').trim().toLowerCase();
+
+                // Kumpulkan semua kardus untuk produk ini, urutkan dari yang PALING TUA (FIFO)
+                const productBatches = batches
+                    .filter(b => b.status !== 'Rusak/Basi' && (b.product_name || '').trim().toLowerCase() === targetProductName)
+                    .sort((a, b) => new Date(a.arrival_date).getTime() - new Date(b.arrival_date).getTime());
+
+                let qtyNeeded = Number(item.qty);
+
+                for (const batch of productBatches) {
+                    if (qtyNeeded <= 0) break;
+
+                    // Hitung sisa stok di KARDUS INI SAJA
+                    const terjualDiKardusIni = transactions
+                        .filter(t => t.batch_id === batch.id)
+                        .reduce((sum, t) => sum + Number(t.qty || 0), 0);
+                    const sisaKardusIni = Number(batch.total_qty || 0) - terjualDiKardusIni;
+
+                    if (sisaKardusIni <= 0) continue; // Kardus habis, lanjut ke kardus berikutnya
+
+                    // Potong sesuai sisa kardus (atau sisa kebutuhan, mana yang lebih kecil)
+                    const deductQty = Math.min(sisaKardusIni, qtyNeeded);
+
+                    let price = item.priceOption === 'custom' ? (Number(item.customPrice) || 0) : (Number(batch?.[`price_${item.priceOption}`]) || Number(batch?.price_normal) || 0);
+
+                    const itemOngkir = isFirstRecord ? finalOngkir : 0;
+                    const itemPacking = isFirstRecord ? finalPacking : 0;
+                    const subtotal = (deductQty * price) + itemOngkir + itemPacking;
+
+                    let itemPaid = paymentStatus === 'lunas' ? subtotal : 0;
+                    if (paymentStatus !== 'lunas') {
+                        if (remainingDP >= subtotal) {
+                            itemPaid = subtotal;
+                            remainingDP -= subtotal;
+                        } else {
+                            itemPaid = remainingDP;
+                            remainingDP = 0;
+                        }
+                    }
+
+                    payloadsToInsert.push({
+                        customer_name: name || 'Pelanggan',
+                        customer_phone: phone,
+                        type: type,
+                        account: account,
+                        payment_status: paymentStatus,
+                        batch_id: batch.id, // MENGUNCI POTONGAN KE KARDUS YANG TEPAT
+                        product_name: item.bundleLabel ? `${batch.product_name} | ${item.bundleLabel}` : batch.product_name,
+                        qty: deductQty,
+                        selling_price: price,
+                        amount_paid: itemPaid,
+                        ongkir: itemOngkir,
+                        packing_fee: itemPacking
+                    });
+
+                    qtyNeeded -= deductQty;
+                    isFirstRecord = false;
+                }
+
+                // FALLBACK: Jaga-jaga jika stok database bentrok, paksa masuk ke kardus terakhir
+                if (qtyNeeded > 0) {
+                    const fallbackBatch = productBatches[productBatches.length - 1] || representativeBatch;
+                    let price = item.priceOption === 'custom' ? (Number(item.customPrice) || 0) : (Number(fallbackBatch?.[`price_${item.priceOption}`]) || Number(fallbackBatch?.price_normal) || 0);
+
+                    const itemOngkir = isFirstRecord ? finalOngkir : 0;
+                    const itemPacking = isFirstRecord ? finalPacking : 0;
+                    const subtotal = (qtyNeeded * price) + itemOngkir + itemPacking;
+
+                    let itemPaid = paymentStatus === 'lunas' ? subtotal : Math.min(remainingDP, subtotal);
+                    if (paymentStatus !== 'lunas') remainingDP = Math.max(0, remainingDP - subtotal);
+
+                    payloadsToInsert.push({
+                        customer_name: name || 'Pelanggan',
+                        customer_phone: phone,
+                        type: type,
+                        account: account,
+                        payment_status: paymentStatus,
+                        batch_id: fallbackBatch.id,
+                        product_name: item.bundleLabel ? `${fallbackBatch.product_name} | ${item.bundleLabel}` : fallbackBatch.product_name,
+                        qty: qtyNeeded,
+                        selling_price: price,
+                        amount_paid: itemPaid,
+                        ongkir: itemOngkir,
+                        packing_fee: itemPacking
+                    });
+                    isFirstRecord = false;
+                }
+            }
+
+            const { error } = await supabase.from('transactions').insert(payloadsToInsert);
             if (error) throw error;
-            toast.success('Transaksi berhasil disimpan!');
+            toast.success('Transaksi berhasil disimpan dengan FIFO!');
         }
-        
-        cancelEdit(); // Bersihkan form
+
+        cancelEdit();
         fetchData();
 
     } catch (error: any) {
-        console.error("--- DETAIL ERROR SUPABASE ---");
-        console.error("Pesan Error:", error?.message || error);
-        if (error?.details) console.error("Detail Kolom:", error.details);
-        if (error?.hint) console.error("Petunjuk:", error.hint);
-        
-        const pesanSpesifik = error?.message || "Cek apakah kolom 'ongkir' & 'packing_fee' sudah dibuat di Supabase!";
-        toast.error(`Gagal menyimpan: ${pesanSpesifik}`, { duration: 5000 });
+        console.error(error);
+        toast.error(`Gagal menyimpan transaksi!`, { duration: 5000 });
     } finally {
         setLoading(false);
     }

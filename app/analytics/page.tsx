@@ -17,39 +17,29 @@ export default function AnalyticsPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [pnlFilter, setPnlFilter] = useState('all');
-  
-  const [monthlyTarget, setMonthlyTarget] = useState(20000000);
 
-  // KODE BARU: Membaca memori saat halaman dibuka
-  useEffect(() => {
-    const savedTarget = localStorage.getItem('target_omzet_pempek');
-    if (savedTarget) {
-      setMonthlyTarget(Number(savedTarget));
-    }
-  }, []);
-
-  // KODE BARU: Menyimpan ke brankas setiap kali diketik
-  const handleTargetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Number(e.target.value);
-    setMonthlyTarget(val);
-    localStorage.setItem('target_omzet_pempek', val.toString());
-  };
-
-  useEffect(() => {
+    useEffect(() => {
     const fetchData = async () => {
-      const [trxRes, batchRes, expRes] = await Promise.all([
-        supabase.from('transactions').select('*'),
-        // Tambahkan filter .eq('is_archived', false) di sini:
-        supabase.from('batches').select('*').eq('is_archived', false), 
-        supabase.from('expenses').select('*')
-      ]);
-      if (trxRes.data) setTransactions(trxRes.data);
-      if (batchRes.data) setBatches(batchRes.data);
-      if (expRes.data) setExpenses(expRes.data);
-      setLoading(false);
+      try {
+        const [trxRes, batchRes, expRes] = await Promise.all([
+          supabase.from('transactions').select('*'), 
+          supabase.from('batches').select('*'),
+          supabase.from('expenses').select('*') 
+        ]);
+        
+        if (trxRes.data) setTransactions(trxRes.data);
+        if (batchRes.data) setBatches(batchRes.data);
+        if (expRes.data) setExpenses(expRes.data);
+        
+      } catch (error) {
+        console.error("Gagal menarik data:", error);
+      } finally {
+        setLoading(false);
+      }
     };
-    fetchData();
-  }, []);
+
+    fetchData(); // <--- TAMBAHAN 1: Jangan lupa panggil fungsinya biar jalan
+  }, []); // <--- TAMBAHAN 2: Ini gembok penutup useEffect-nya yang tadi hilang!
 
   const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
@@ -60,63 +50,6 @@ export default function AnalyticsPage() {
       const d = new Date(dateStr);
       return isNaN(d.getTime()) ? new Date() : d;
   };
-
-  // ==========================================
-  // LOGIKA 1: FORECASTING (ANTI-DUPLIKAT)
-  // ==========================================
-  const getForecasting = () => {
-    const stockMap: Record<string, { qty: number, displayName: string }> = {};
-    
-    // 1. Kumpulkan Stok Masuk dengan kunci huruf kecil
-    batches.forEach(b => { 
-        if (b.status !== 'Sold Out') {
-            const rawName = b.product_name || 'Pempek Campur';
-            const key = rawName.trim().toLowerCase();
-            if (!stockMap[key]) stockMap[key] = { qty: 0, displayName: rawName.trim() };
-            stockMap[key].qty += safeNum(b.total_qty);
-        }
-    });
-
-    // 2. Kurangi dengan Stok Terjual
-    transactions.forEach(t => { 
-        const rawName = t.product_name || 'Pempek Campur';
-        const key = rawName.trim().toLowerCase();
-        if (!stockMap[key]) stockMap[key] = { qty: 0, displayName: rawName.trim() };
-        stockMap[key].qty -= safeNum(t.qty); 
-    });
-
-    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    // 3. Hitung Prediksi Habis
-    return Object.keys(stockMap).map(key => {
-        const data = stockMap[key];
-        
-        const trxRecent = transactions.filter(t => {
-            const tName = (t.product_name || 'Pempek Campur').trim().toLowerCase();
-            return tName === key && safeDate(t.created_at) >= sevenDaysAgo;
-        });
-        
-        const totalSoldRecent = trxRecent.reduce((acc, curr) => acc + safeNum(curr.qty), 0);
-        const avgDailySales = totalSoldRecent / 7;
-        const currentStock = data.qty;
-        
-        let daysLeft: number | string = Infinity;
-        if (currentStock <= 0) {
-            daysLeft = 0; 
-        } else if (avgDailySales > 0) {
-            daysLeft = Math.floor(currentStock / avgDailySales);
-        }
-        
-        return {
-            name: data.displayName, 
-            currentStock: currentStock, 
-            avgDaily: avgDailySales.toFixed(1),
-            daysLeft: daysLeft === Infinity ? 'Belum ada data' : `${daysLeft} Hari lagi`,
-            isCritical: daysLeft !== Infinity && daysLeft <= 3
-        };
-    }).sort((a, b) => (a.isCritical === b.isCritical ? 0 : a.isCritical ? -1 : 1));
-  };
-  const forecasts = getForecasting();
 
   // ==========================================
   // LOGIKA 2: KEUANGAN (FILTERED P&L + BEP FIX + ANTI-MODAL)
@@ -144,7 +77,7 @@ export default function AnalyticsPage() {
   });
 
   const filteredExp = expenses.filter(e => {
-      if (!isRealExpense(e)) return false; // Buang data modal/uang masuk
+      // Baris isRealExpense SAYA HAPUS agar data setoran modal / uang masuk bisa lewat ke Arus Kas
       if (pnlFilter === 'all') return true;
       const d = safeDate(e.created_at);
       if (pnlFilter === 'this_month') return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
@@ -156,52 +89,113 @@ export default function AnalyticsPage() {
       return true;
   });
 
-  const totalRevenue = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)), 0);
-  const totalHPP = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.qty) * 15000), 0);
+  // 1. PISAHKAN PENDAPATAN MURNI PRODUK DAN PENDAPATAN JASA (ONGKIR & PACKING)
+  const totalProductRevenue = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)), 0);
+  const totalServiceRevenue = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.ongkir) || 0) + (safeNum(curr.packing_fee) || 0), 0);
+  const totalGrossRevenue = totalProductRevenue + totalServiceRevenue;
+
+  // 2. HPP DINAMIS DARI DATABASE GUDANG (Bukan dipukul rata 15.000)
+  const totalHPP = filteredTrx.reduce((acc, curr) => {
+      const batch = batches.find(b => b.id === curr.batch_id);
+      const modal = batch ? safeNum(batch.base_cost_per_qty) : 15000;
+      return acc + (safeNum(curr.qty) * modal);
+  }, 0);
+
   const totalCapex = filteredExp.filter(e => e.category === 'capex').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   const totalAds = filteredExp.filter(e => e.category === 'marketing' || e.category === 'ads').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   const totalStok = filteredExp.filter(e => e.category === 'stok').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   const totalOpex = filteredExp.filter(e => e.category === 'operational' || e.category === 'operasional').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
 
-  const netProfit = (totalRevenue - totalHPP) - totalOpex - totalAds;
-  const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalHPP) / totalRevenue) * 100 : 0;
-  const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-
+  // 3. RUMUS NET PROFIT DAN MARGIN STANDAR KORPORAT
+  const netProfit = (totalGrossRevenue - totalHPP) - totalOpex - totalAds;
+  const grossMargin = totalProductRevenue > 0 ? ((totalProductRevenue - totalHPP) / totalProductRevenue) * 100 : 0;
+  const netMargin = totalGrossRevenue > 0 ? (netProfit / totalGrossRevenue) * 100 : 0;
+  
   // ==========================================
-  // LOGIKA TAMBAHAN A: VALUASI PERSEDIAAN STOK (UANG MENGENDAP & BASI)
+  // LOGIKA MUTAKHIR: HITUNG SISA FISIK MURNI (ANTI STOK HANTU)
   // ==========================================
   let totalModalSisaDiFreezer = 0;
-  let totalRugiBarangBasi = 0;
+  let potensiOmzetSemuaStok = 0;
 
+  // 1. Buat peta untuk menghitung sisa stok riil per nama produk
+  const hitungStokRiil: Record<string, { masuk: number, keluar: number, harga: number, modal: number }> = {};
+
+  // 2. Hitung semua barang yang PERNAH MASUK
   batches.forEach(b => {
-      const bDate = safeDate(b.arrival_date);
-      let isInFilter = true;
-      if (pnlFilter === 'this_month') isInFilter = bDate.getMonth() === currentMonth && bDate.getFullYear() === currentYear;
-      if (pnlFilter === 'last_month') isInFilter = bDate.getMonth() === (currentMonth===0?11:currentMonth-1) && bDate.getFullYear() === (currentMonth===0?currentYear-1:currentYear);
+      if (b.status === 'Rusak/Basi') return; // Abaikan barang rusak
 
-      if (isInFilter) {
-          const qtyMasuk = safeNum(b.total_qty);
-          const modalPerPack = safeNum(b.base_cost_per_qty);
+      const namaBersih = (b.product_name || 'Pempek Campur').split(' (REJECT')[0].trim().toLowerCase();
 
-          // Hitung yang sudah terjual khusus batch ini
-          const terjual = transactions.filter(t => t.batch_id === b.id).reduce((sum, t) => sum + safeNum(t.qty), 0);
-          const sisaQty = qtyMasuk - terjual;
+      if (!hitungStokRiil[namaBersih]) {
+          hitungStokRiil[namaBersih] = { masuk: 0, keluar: 0, harga: 0, modal: 0 };
+      }
 
-          if (sisaQty > 0) {
-              if (b.status === 'Rusak/Basi') { // Sesuaikan nama status basi dengan di app/batches
-                  totalRugiBarangBasi += (sisaQty * modalPerPack);
-              } else {
-                  totalModalSisaDiFreezer += (sisaQty * modalPerPack);
-              }
-          }
+      // Tambahkan stok masuk jika batch belum dinyatakan Sold Out secara sistem
+      if (b.status !== 'Sold Out') {
+          hitungStokRiil[namaBersih].masuk += Number(b.total_qty || 0);
+      }
+
+      // Ambil patokan modal & harga dari data yang paling update
+      hitungStokRiil[namaBersih].modal = Number(b.base_cost_per_qty) || hitungStokRiil[namaBersih].modal;
+      hitungStokRiil[namaBersih].harga = Number(b.price_normal) || Number(b.selling_price) || hitungStokRiil[namaBersih].harga;
+  });
+
+  // 3. Kurangi dengan SEMUA TRANSAKSI YANG PERNAH TERJUAL (ALL-TIME)
+  // Gunakan variabel transactions UTUH (bachelor penjualan dari awal buka toko)
+  transactions.forEach(t => {
+      const namaBersih = (t.product_name || 'Pempek Campur').split(' | ')[0].trim().toLowerCase();
+
+      if (hitungStokRiil[namaBersih]) {
+          hitungStokRiil[namaBersih].keluar += Number(t.qty || 0);
       }
   });
+
+  // 4. Konversi Sisa Fisik Kulkas ke Rupiah
+  Object.keys(hitungStokRiil).forEach(key => {
+      const produk = hitungStokRiil[key];
+      
+      // Sisa riil = Total Masuk Seumur Hidup - Total Keluar Seumur Hidup
+      const sisaFisikFreezer = produk.masuk - produk.keluar;
+
+      // HANYA hitung jika barangnya membumi / benar-benar ada di kulkas saat ini
+      if (sisaFisikFreezer > 0) {
+          totalModalSisaDiFreezer += (sisaFisikFreezer * produk.modal);
+          potensiOmzetSemuaStok += (sisaFisikFreezer * produk.harga);
+      }
+  });
+
+  const totalRugiBarangBasi = 0;
+  const potensiUntungSemuaStok = potensiOmzetSemuaStok - totalModalSisaDiFreezer;
+  
+  // ==========================================
+  // LOGIKA 2B: PIUTANG BEREDAR (ACCOUNTS RECEIVABLE)
+  // ==========================================
+  const totalPiutangBeredar = filteredTrx.reduce((acc, curr) => {
+      // FILTER TANGGAL: Abaikan transaksi yang terjadi sebelum 12 Mei 2026
+      const cutoffDate = new Date('2026-05-12T00:00:00');
+      const trxDate = safeDate(curr.created_at);
+      if (trxDate < cutoffDate) {
+          return acc;
+      }
+
+      // Kalau statusnya udah Lunas, langsung lewati (jangan dihitung utang)
+      if (curr.payment_status === 'Lunas') {
+          return acc;
+      }
+
+      // Kalau statusnya masih 'Terhutang', baru kita hitung sisa tagihannya
+      const totalTagihanTrx = (safeNum(curr.qty) * safeNum(curr.selling_price)) + safeNum(curr.ongkir) + safeNum(curr.packing_fee);
+      const sisaHutangPelanggan = totalTagihanTrx - safeNum(curr.amount_paid);
+      
+      return acc + (sisaHutangPelanggan > 0 ? sisaHutangPelanggan : 0);
+  }, 0);
 
   // ==========================================
   // LOGIKA TAMBAHAN B: ARUS KAS FISIK (DOMPET ASLI)
   // ==========================================
   // 1. Uang Masuk Fisik
-  const totalCashInSales = filteredTrx.reduce((acc, curr) => acc + (safeNum(curr.amount_paid) || (safeNum(curr.qty) * safeNum(curr.selling_price))), 0);
+  // 1. Uang Masuk Fisik (MURNI hanya membaca yang dibayar, hutang 0 tidak akan dihitung)
+  const totalCashInSales = filteredTrx.reduce((acc, curr) => acc + safeNum(curr.amount_paid), 0);
   const totalCashInModal = filteredExp.filter(e => e.type === 'income').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   const totalCashIn = totalCashInSales + totalCashInModal;
 
@@ -214,120 +208,33 @@ export default function AnalyticsPage() {
   // 3. Dompet Akhir
   const netCashFlow = totalCashIn - totalCashOut;
 
-  // C. DATA KHUSUS BEP TRACKER (SELALU ALL TIME)
-  const allTimeRev = transactions.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)), 0);
-  const allTimeHPP = transactions.reduce((acc, curr) => acc + (safeNum(curr.qty) * 15000), 0);
+  // C. DATA KHUSUS BEP TRACKER (PROFESIONAL)
+  const allTimeRev = transactions.reduce((acc, curr) => acc + (safeNum(curr.qty) * safeNum(curr.selling_price)) + safeNum(curr.ongkir) + safeNum(curr.packing_fee), 0);
   
-  // Hitung pengeluaran operasional sepanjang masa (kecuali Modal, Capex, dan Stok)
-  const allTimeRealExp = expenses.filter(e => isRealExpense(e) && (e.category === 'operational' || e.category === 'operasional' || e.category === 'marketing' || e.category === 'ads')).reduce((acc, curr) => acc + safeNum(curr.amount), 0);
+  const allTimeHPP = transactions.reduce((acc, curr) => {
+      const batch = batches.find(b => b.id === curr.batch_id);
+      const modal = batch ? safeNum(batch.base_cost_per_qty) : 15000;
+      return acc + (safeNum(curr.qty) * modal);
+  }, 0);
+
+  // 1. Target Modal Pribadi (Menarik semua pemasukan/income dari tabel Keuangan tanpa peduli nama kategorinya)
+  const totalSetoranModal = expenses
+      .filter(e => e.type === 'income')
+      .reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   
-  const allTimeNetProfit = (allTimeRev - allTimeHPP) - allTimeRealExp;
-  const allTimeCapex = expenses.filter(e => e.category === 'capex').reduce((acc, curr) => acc + safeNum(curr.amount), 0);
-
-  const bepPercent = allTimeCapex > 0 ? Math.max(0, Math.min(100, (allTimeNetProfit / allTimeCapex) * 100)) : 0;
-  const sisaBEP = Math.max(0, allTimeCapex - allTimeNetProfit);
-  // ==========================================
-  // LOGIKA 3: SUPER KPI & RFM SEGMENTATION (UPGRADED FIX)
-  // ==========================================
-  const aov = transactions.length > 0 ? totalRevenue / transactions.length : 0;
-  const inventoryValue = forecasts.reduce((sum, f) => sum + (f.currentStock * 15000), 0);
-
-  const customerMap: Record<string, { name: string, freq: number, monetary: number, lastDate: Date }> = {};
+  // 2. Total Biaya Operasional (Hanya Opex & Ads, membuang Capex & Stok agar hitungan Profit murni)
+  const allTimeOpexAds = expenses
+      .filter(e => e.type === 'expense' && (e.category === 'operational' || e.category === 'operasional' || e.category === 'marketing' || e.category === 'ads'))
+      .reduce((acc, curr) => acc + safeNum(curr.amount), 0);
   
-  transactions.forEach(t => {
-      // 1. Logika Cerdas: Pakai Nama sebagai ID jika WA kosong
-      const phoneStr = t.customer_phone ? String(t.customer_phone).trim() : '';
-      const isPhoneEmpty = phoneStr === '' || phoneStr === '628' || phoneStr === '-';
-      
-      const uniqueKey = isPhoneEmpty 
-          ? `NAME_${(t.customer_name || 'Tanpa Nama').trim().toLowerCase()}` 
-          : `PHONE_${phoneStr}`;
-
-      // 2. Daftarkan pelanggan ke dalam memori
-      if (!customerMap[uniqueKey]) {
-          customerMap[uniqueKey] = { 
-              name: t.customer_name || 'Tanpa Nama', 
-              freq: 0, 
-              monetary: 0, 
-              lastDate: new Date(0) 
-          };
-      }
-      
-      // 3. Update data belanja mereka
-      const d = safeDate(t.created_at);
-      if (d > customerMap[uniqueKey].lastDate) customerMap[uniqueKey].lastDate = d;
-      customerMap[uniqueKey].freq += 1;
-      customerMap[uniqueKey].monetary += (safeNum(t.qty) * safeNum(t.selling_price));
-  });
-
-  const now = new Date();
-  const segments = { sultan: [] as any[], atRisk: [] as any[], newbie: [] as any[] };
+  // 3. Menghitung Profit Bersih Murni
+  const netProfitAllTime = (allTimeRev - allTimeHPP) - allTimeOpexAds; 
   
-  Object.values(customerMap).forEach(c => {
-      const daysSince = (now.getTime() - c.lastDate.getTime()) / (1000 * 3600 * 24);
-      
-      // 4. Seleksi Masuk Asrama RFM
-      if (c.freq >= 2 && c.monetary >= 100000 && daysSince <= 30) {
-          segments.sultan.push(c); // Sering beli, nominal besar, baru saja beli
-      } 
-      else if (c.freq > 1 && daysSince > 30) {
-          segments.atRisk.push(c); // Dulu sering beli, tapi udah sebulan ngilang
-      } 
-      else if (c.freq === 1 && daysSince <= 14) {
-          segments.newbie.push(c); // Baru pertama kali beli dalam 2 minggu terakhir
-      }
-  });
-  // 5. Hitung Persentase Pelanggan Setia (Repeat Order Rate)
-  const totalUniqueCustomers = Object.keys(customerMap).length;
-  // Cari tahu berapa orang yang belanjanya lebih dari 1 kali (freq > 1)
-  const totalRepeatCustomers = Object.values(customerMap).filter(c => c.freq > 1).length;
-  // Jadikan persentase (%)
-  const repeatRate = totalUniqueCustomers > 0 ? (totalRepeatCustomers / totalUniqueCustomers) * 100 : 0;
-
-  // ==========================================
-  // LOGIKA 4: TARGET PACING (RUN-RATE)
-  // ==========================================
-  const currentM = now.getMonth();
-  const currentY = now.getFullYear();
-  const trxThisMonth = transactions.filter(t => new Date(t.created_at).getMonth() === currentM && new Date(t.created_at).getFullYear() === currentY);
-  const mtdRevenue = trxThisMonth.reduce((acc, t) => acc + (t.qty * t.selling_price), 0);
-  const daysPassed = now.getDate();
-  const totalDaysInMonth = new Date(currentY, currentM + 1, 0).getDate();
-  const daysLeftInMonth = totalDaysInMonth - daysPassed;
+  // 4. Persentase Kembalinya Modal Pribadi
+  const bepPercent = totalSetoranModal > 0 ? Math.max(0, Math.min(100, (netProfitAllTime / totalSetoranModal) * 100)) : 0;
   
-  const currentRunRate = mtdRevenue / daysPassed;
-  const projectedRevenue = mtdRevenue + (currentRunRate * daysLeftInMonth);
-  const requiredRunRate = daysLeftInMonth > 0 ? Math.max(0, (monthlyTarget - mtdRevenue) / daysLeftInMonth) : 0;
-  const pacingPercentage = Math.min((mtdRevenue / monthlyTarget) * 100, 100);
-  const isOnTrack = projectedRevenue >= monthlyTarget;
-
-  // ==========================================
-  // LOGIKA 5: PROFITABILITY QUADRANT
-  // ==========================================
-  const costMap: Record<string, number> = {};
-  batches.forEach(b => { costMap[b.product_name] = b.base_cost_per_qty; });
-  
-  const productStats: Record<string, { vol: number, rev: number, cost: number }> = {};
-  transactions.forEach(t => {
-      const name = t.product_name;
-      if (!productStats[name]) productStats[name] = { vol: 0, rev: 0, cost: 0 };
-      productStats[name].vol += t.qty;
-      productStats[name].rev += (t.qty * t.selling_price);
-      productStats[name].cost += (t.qty * (costMap[name] || 15000));
-  });
-
-  const quadData = Object.keys(productStats).map(k => {
-      const vol = productStats[k].vol;
-      const margin = vol > 0 ? (productStats[k].rev - productStats[k].cost) / vol : 0;
-      return { name: k, vol, margin };
-  });
-  const avgVol = quadData.reduce((acc, c) => acc + c.vol, 0) / (quadData.length || 1);
-  const avgMargin = quadData.reduce((acc, c) => acc + c.margin, 0) / (quadData.length || 1);
-
-  const quadStars = quadData.filter(q => q.vol >= avgVol && q.margin >= avgMargin).map(q => q.name);
-  const quadCows = quadData.filter(q => q.vol < avgVol && q.margin >= avgMargin).map(q => q.name);
-  const quadHorses = quadData.filter(q => q.vol >= avgVol && q.margin < avgMargin).map(q => q.name);
-  const quadDogs = quadData.filter(q => q.vol < avgVol && q.margin < avgMargin).map(q => q.name);
+  // 5. Sisa Rupiah Menuju Balik Modal 100%
+  const sisaBEP = Math.max(0, totalSetoranModal - netProfitAllTime);
 
   // ==========================================
   // LOGIKA 6: GRAFIK & HEATMAP (TITANIUM FIX)
@@ -396,8 +303,7 @@ export default function AnalyticsPage() {
   });
   const maxMonthlyRev = Math.max(...monthlyChart.map(m => m.rev), 1);
 
-  // D. TOP PRODUK & SUMBER OMZET
-  const topProducts = quadData.map(q => ({ name: q.name, qty: q.vol, percent: (q.vol / (quadData.reduce((a,b)=>a+b.vol,0)||1))*100 })).sort((a, b) => b.qty - a.qty).slice(0, 4);
+  // D. TOP PRODUK & SUMBER OMZET 
   
   const channelSales = { organik: 0, marketplace: 0, meta_ads: 0 };
   transactions.forEach(t => { 
@@ -454,8 +360,12 @@ export default function AnalyticsPage() {
           
           <div className="space-y-4">
             <div className="flex justify-between items-end border-b border-slate-800 pb-3">
-                <span className="text-slate-400 text-xs">Penjualan Kotor</span>
-                <span className="font-black text-lg">{formatIDR(totalRevenue)}</span>
+                <span className="text-slate-400 text-xs">Penjualan Murni Produk</span>
+                <span className="font-black text-lg">{formatIDR(totalProductRevenue)}</span>
+            </div>
+            <div className="flex justify-between items-end border-b border-slate-800 pb-3">
+                <span className="text-slate-400 text-xs">Pendapatan Ongkir & Packing</span>
+                <span className="font-black text-lg text-indigo-400">+ {formatIDR(totalServiceRevenue)}</span>
             </div>
             <div className="flex justify-between items-end border-b border-slate-800 pb-3">
                 <span className="text-slate-400 text-xs">Modal (HPP)</span>
@@ -491,39 +401,68 @@ export default function AnalyticsPage() {
           </div>
         </section>
 
-        {/* ========================================== */}
-        {/* FITUR BARU 1: VALUASI STOK (UANG NYANGKUT) */}
-        {/* ========================================== */}
-        <section className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white mb-2 border border-slate-800 z-30 relative">
+        {/* KOTAK VALUASI STOK UPGRADED (POTENSI OMZET & PROFIT) */}
+        <section className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white mb-2 border border-slate-800">
           <h3 className="font-bold flex items-center text-sm uppercase tracking-widest mb-4">
-            <Archive className="w-5 h-5 mr-3 text-amber-400"/> Realitas Stok & Kerugian
+            <PackageOpen className="w-5 h-5 mr-3 text-amber-400"/> Valuasi & Potensi Stok
           </h3>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl">
-                  <PackageOpen className="w-6 h-6 text-indigo-400 mb-2"/>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Modal Mengendap</p>
-                  <p className="text-lg font-black text-indigo-400 mt-1">{formatIDR(totalModalSisaDiFreezer)}</p>
-                  <p className="text-[9px] text-slate-500 mt-1">Sisa stok di freezer.</p>
+          
+          {/* BARIS 1: KONDISI STOK SAAT INI */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-slate-800 p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Modal Mengendap</p>
+                <p className="text-base font-black text-indigo-400 mt-1">{formatIDR(totalModalSisaDiFreezer)}</p>
               </div>
-              <div className="bg-rose-950/30 border border-rose-900/50 p-4 rounded-2xl">
-                  <Trash2 className="w-6 h-6 text-rose-500 mb-2"/>
-                  <p className="text-[10px] font-bold text-rose-400/70 uppercase">Rugi Stok Basi</p>
-                  <p className="text-lg font-black text-rose-500 mt-1">- {formatIDR(totalRugiBarangBasi)}</p>
-                  <p className="text-[9px] text-rose-500/60 mt-1">Uang hangus 100%.</p>
+              <div className="bg-rose-950/30 p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-rose-400/70 uppercase tracking-wide">Rugi Stok Basi</p>
+                <p className="text-base font-black text-rose-500 mt-1">{formatIDR(0)}</p>
               </div>
           </div>
-          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
-              <div className="flex justify-between items-center mb-2">
-                 <p className="text-xs font-bold text-amber-500">Laba Kertas vs Rugi Basi</p>
-                 <Scale className="w-4 h-4 text-amber-500"/>
+
+          {/* BARIS 2: PREDIKSI MASA DEPAN JIKA HABIS TERJUAL */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-emerald-950/20 border border-emerald-500/10 p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">Potensi Omzet Cash</p>
+                <p className="text-base font-black text-emerald-400 mt-1">+{formatIDR(potensiOmzetSemuaStok)}</p>
               </div>
-              <p className="text-[9px] text-slate-400 mb-2">Laba bersih dikurangi total kerugian barang basi.</p>
-              <div className="flex justify-between items-center border-t border-amber-500/20 pt-2">
-                 <span className="text-xs text-amber-200">Keuntungan Real:</span>
-                 <span className={`text-lg font-black ${netProfit - totalRugiBarangBasi >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                    {formatIDR(netProfit - totalRugiBarangBasi)}
-                 </span>
+              <div className="bg-cyan-950/20 border border-cyan-500/10 p-4 rounded-2xl">
+                <p className="text-[10px] font-bold text-cyan-400 uppercase tracking-wide">Potensi Cuan Bersih</p>
+                <p className="text-base font-black text-cyan-400 mt-1">+{formatIDR(potensiUntungSemuaStok)}</p>
               </div>
+          </div>
+
+          {/* TOTAL KEUNTUNGAN REAL SAAT INI */}
+          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl flex justify-between items-center">
+             <div>
+                <span className="text-xs text-amber-200 font-bold block">Keuntungan Real Saat Ini:</span>
+                <span className="text-[9px] text-slate-400 italic">*Sudah dikurangi operasional & iklan berjalan</span>
+             </div>
+             <span className={`text-lg font-black ${netProfit - totalRugiBarangBasi >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                {formatIDR(netProfit - totalRugiBarangBasi)}
+             </span>
+          </div>
+        </section>
+
+        {/* PANEL BARU: PIUTANG BEREDAR (ACCOUNTS RECEIVABLE) */}
+        <section className="bg-slate-900 p-6 rounded-3xl shadow-xl text-white mb-2 border border-slate-800">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold flex items-center text-sm uppercase tracking-widest text-slate-200">
+              <Activity className="w-5 h-5 mr-3 text-rose-400"/> Piutang Beredar
+            </h3>
+            <span className="text-[9px] font-black bg-rose-500/20 text-rose-400 px-2.5 py-1 rounded-md uppercase tracking-wider">
+               Belum Tertagih
+            </span>
+          </div>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-800/50 p-5 rounded-2xl border border-slate-700/60 flex justify-between items-center">
+             <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Total Uang di Pelanggan</p>
+                <h2 className="text-2xl font-black text-rose-400 mt-1">{formatIDR(totalPiutangBeredar)}</h2>
+             </div>
+             <div className="text-right max-w-[50%]">
+                <p className="text-[9px] text-slate-400 leading-normal italic">
+                   *Uang ini sudah diakui sebagai omzet penjualan, namun fisik kas belum masuk ke laci/bank Pempek Umiwa.
+                </p>
+             </div>
           </div>
         </section>
 
@@ -554,102 +493,6 @@ export default function AnalyticsPage() {
                     {netCashFlow >= 0 ? '+' : ''}{formatIDR(netCashFlow)}
                 </h2>
             </div>
-          </div>
-        </section>
-        
-        {/* ========================================== */}
-        {/* FITUR BARU 3: TARGET PACING (RUN-RATE)     */}
-        {/* ========================================== */}
-        <section className="bg-white p-5 rounded-2xl shadow-md border border-slate-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-slate-800 flex items-center"><Crosshair className="w-5 h-5 mr-2 text-indigo-500"/> Target Pacing Bulan Ini</h3>
-            <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                <span className="text-[10px] font-bold px-2 text-slate-500">Rp</span>
-                <input type="number" value={monthlyTarget} onChange={handleTargetChange} className="w-24 p-1 text-xs font-bold outline-none bg-transparent" />
-            </div>
-          </div>
-          
-          <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 shadow-inner relative mb-2">
-            <div className={`h-full transition-all duration-1000 ${isOnTrack ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.max(2, pacingPercentage)}%` }}></div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-2 text-center mt-4">
-              <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-[9px] font-bold text-slate-500 uppercase">Proyeksi Akhir Bulan</p>
-                  <p className={`text-sm font-black ${isOnTrack ? 'text-emerald-600' : 'text-amber-600'}`}>{formatIDR(projectedRevenue)}</p>
-              </div>
-              <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-[9px] font-bold text-slate-500 uppercase">Target Kecepatan Harian</p>
-                  <p className="text-sm font-black text-slate-800">{formatIDR(requiredRunRate)} <span className="text-[9px]">/hr</span></p>
-              </div>
-          </div>
-          {!isOnTrack && <p className="text-[10px] text-amber-700 mt-2 text-center font-medium bg-amber-50 p-1 rounded-lg">⚠️ Tambah omzet {formatIDR(monthlyTarget - projectedRevenue)} lagi untuk aman!</p>}
-        </section>
-
-        {/* RFM SEGMENTATION (MENAMPILKAN NAMA) */}
-        <section className="grid grid-cols-3 gap-2">
-            <div className="bg-gradient-to-b from-amber-50 to-white p-3 rounded-2xl shadow-sm border border-amber-200 flex flex-col justify-between">
-                <div className="text-center">
-                    <div className="flex justify-center mb-1"><Crown className="w-5 h-5 text-amber-500"/></div>
-                    <p className="text-lg font-black text-amber-600 mt-1">{segments.sultan.length} <span className="text-[10px] font-normal text-slate-500">Org</span></p>
-                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter leading-tight mt-1">Sultan (VIP)</p>
-                </div>
-                <div className="mt-2 bg-amber-50/50 p-1.5 rounded-lg border border-amber-100 min-h-[40px]">
-                    {segments.sultan.length === 0 && <p className="text-[8px] text-amber-600/50 text-center italic mt-1">Belum ada</p>}
-                    {segments.sultan.slice(0, 3).map((c, i) => <p key={i} className="text-[9px] font-bold text-slate-700 truncate capitalize">• {c.name}</p>)}
-                    {segments.sultan.length > 3 && <p className="text-[8px] text-amber-600 font-bold mt-1 text-center">+{segments.sultan.length - 3} lainnya</p>}
-                </div>
-            </div>
-            
-            <div className="bg-gradient-to-b from-rose-50 to-white p-3 rounded-2xl shadow-sm border border-rose-200 flex flex-col justify-between">
-                <div className="text-center">
-                    <div className="flex justify-center mb-1"><UserMinus className="w-5 h-5 text-rose-500"/></div>
-                    <p className="text-lg font-black text-rose-600 mt-1">{segments.atRisk.length} <span className="text-[10px] font-normal text-slate-500">Org</span></p>
-                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter leading-tight mt-1">Risiko Kabur</p>
-                </div>
-                <div className="mt-2 bg-rose-50/50 p-1.5 rounded-lg border border-rose-100 min-h-[40px]">
-                    {segments.atRisk.length === 0 && <p className="text-[8px] text-rose-600/50 text-center italic mt-1">Aman</p>}
-                    {segments.atRisk.slice(0, 3).map((c, i) => <p key={i} className="text-[9px] font-bold text-slate-700 truncate capitalize">• {c.name}</p>)}
-                    {segments.atRisk.length > 3 && <p className="text-[8px] text-rose-600 font-bold mt-1 text-center">+{segments.atRisk.length - 3} lainnya</p>}
-                </div>
-            </div>
-            
-            <div className="bg-gradient-to-b from-emerald-50 to-white p-3 rounded-2xl shadow-sm border border-emerald-200 flex flex-col justify-between">
-                <div className="text-center">
-                    <div className="flex justify-center mb-1"><Sprout className="w-5 h-5 text-emerald-500"/></div>
-                    <p className="text-lg font-black text-emerald-600 mt-1">{segments.newbie.length} <span className="text-[10px] font-normal text-slate-500">Org</span></p>
-                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter leading-tight mt-1">Anak Baru</p>
-                </div>
-                <div className="mt-2 bg-emerald-50/50 p-1.5 rounded-lg border border-emerald-100 min-h-[40px]">
-                    {segments.newbie.length === 0 && <p className="text-[8px] text-emerald-600/50 text-center italic mt-1">Belum ada</p>}
-                    {segments.newbie.slice(0, 3).map((c, i) => <p key={i} className="text-[9px] font-bold text-slate-700 truncate capitalize">• {c.name}</p>)}
-                    {segments.newbie.length > 3 && <p className="text-[8px] text-emerald-600 font-bold mt-1 text-center">+{segments.newbie.length - 3} lainnya</p>}
-                </div>
-            </div>
-        </section>
-
-        {/* ========================================== */}
-        {/* FITUR BARU 2: PROFITABILITY QUADRANT       */}
-        {/* ========================================== */}
-        <section className="bg-slate-900 p-5 rounded-2xl shadow-md border border-slate-800 text-white">
-          <h3 className="font-bold flex items-center mb-4"><PackageOpen className="w-4 h-4 mr-2 text-fuchsia-400"/> Kuadran Profitabilitas Produk</h3>
-          <div className="grid grid-cols-2 gap-2">
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                  <p className="text-[10px] font-bold text-amber-300 flex items-center"><Coins className="w-3 h-3 mr-1"/> Sapi Perah (Margin Tinggi, Vol Rendah)</p>
-                  <p className="text-xs text-slate-300 mt-1">{quadCows.length > 0 ? quadCows.join(', ') : '-'}</p>
-              </div>
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                  <p className="text-[10px] font-bold text-emerald-300 flex items-center"><Star className="w-3 h-3 mr-1"/> Bintang (Margin Tinggi, Vol Tinggi)</p>
-                  <p className="text-xs text-slate-300 mt-1">{quadStars.length > 0 ? quadStars.join(', ') : '-'}</p>
-              </div>
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                  <p className="text-[10px] font-bold text-rose-300 flex items-center"><AlertTriangle className="w-3 h-3 mr-1"/> Anjing (Margin Tipis, Vol Rendah)</p>
-                  <p className="text-xs text-slate-300 mt-1">{quadDogs.length > 0 ? quadDogs.join(', ') : '-'}</p>
-              </div>
-              <div className="bg-white/10 p-3 rounded-xl border border-white/10">
-                  <p className="text-[10px] font-bold text-blue-300 flex items-center"><Activity className="w-3 h-3 mr-1"/> Kuda Beban (Margin Tipis, Vol Tinggi)</p>
-                  <p className="text-xs text-slate-300 mt-1">{quadHorses.length > 0 ? quadHorses.join(', ') : '-'}</p>
-              </div>
           </div>
         </section>
 
@@ -707,28 +550,7 @@ export default function AnalyticsPage() {
           </div>
         </section>
 
-        {/* FORECASTING STOK */}
-        <section className="bg-white p-5 rounded-2xl shadow-md border border-slate-200">
-          <h3 className="font-bold text-slate-800 flex items-center mb-4 text-sm uppercase">
-            <Clock className="w-4 h-4 mr-2 text-amber-500"/> Estimasi Stok Habis
-          </h3>
-          <div className="space-y-3">
-            {forecasts.map((f, i) => (
-              <div key={i} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <div>
-                    <p className="text-sm font-bold text-slate-800">{f.name}</p>
-                    <p className="text-[10px] text-slate-500">Laju: {f.avgDaily} Pack/hari</p>
-                </div>
-                <div className="text-right">
-                    <p className={`text-xs font-black ${f.isCritical ? 'text-rose-600' : 'text-emerald-600'}`}>{f.daysLeft}</p>
-                    <p className="text-[10px] text-slate-400">Sisa {f.currentStock} Pack</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* BEP TRACKER CARD */}
+        {/* BEP TRACKER CARD (STANDAR PROFESIONAL) */}
         <section className="bg-white p-5 rounded-2xl shadow-md border border-slate-200">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-slate-800 flex items-center"><Target className="w-5 h-5 mr-2 text-indigo-500"/> BEP Tracker</h3>
@@ -738,7 +560,7 @@ export default function AnalyticsPage() {
             <div className="bg-indigo-500 h-full transition-all duration-1000" style={{ width: `${Math.max(2, bepPercent)}%` }}></div>
           </div>
           <div className="flex justify-between mt-3 text-xs font-bold text-slate-500">
-            <p>Target Capex: {formatIDR(totalCapex)}</p>
+            <p>Target Modal: {formatIDR(totalSetoranModal)}</p>
             <p>Sisa: <span className="text-rose-500">{formatIDR(sisaBEP)}</span></p>
           </div>
         </section>

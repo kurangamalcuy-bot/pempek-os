@@ -40,15 +40,19 @@ export default function Dashboard() {
 
   const formatIDR = (num: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  // --- LOGIKA STOK MULTI-PRODUK (ANTI DUPLIKAT) ---
+  // --- LOGIKA STOK MULTI-PRODUK (ANTI DUPLIKAT & ANTI HANTU) ---
   const stockMap: Record<string, { in: number, out: number, displayName: string, isArchived: boolean }> = {};
 
   batches.forEach(b => {
-    const rawName = b.product_name || 'Pempek Campur';
-    const key = rawName.trim().toLowerCase(); 
+    // PENYELAMAT 1: Buang jauh-jauh stok basi, jangan anggap sebagai menu!
+    if (b.status === 'Rusak/Basi') return;
+
+    // Bersihkan nama dari embel-embel aneh
+    const rawName = (b.product_name || 'Pempek Campur').split(' (REJECT')[0].trim();
+    const key = rawName.toLowerCase(); 
     
     // Default anggap diarsip, sampai terbukti ada 1 saja batch yang belum diarsip
-    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim(), isArchived: true };
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName, isArchived: true };
     
     // Hitung total masuk
     if (b.status !== 'Sold Out') stockMap[key].in += Number(b.total_qty);
@@ -58,21 +62,21 @@ export default function Dashboard() {
   });
 
   transactions.forEach(t => {
-    // KUNCI RAHASIA: Potong nama jika ada " | " supaya kembali ke nama aslinya
-    const rawName = (t.product_name || 'Pempek Campur').split(' | ')[0];
-    const key = rawName.trim().toLowerCase(); 
+    // Pastikan nama transaksi sinkron dengan nama stok
+    const rawName = (t.product_name || 'Pempek Campur').split(' | ')[0].trim();
+    const key = rawName.toLowerCase(); 
     
-    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName.trim(), isArchived: false };
+    if (!stockMap[key]) stockMap[key] = { in: 0, out: 0, displayName: rawName, isArchived: false };
     // Hitung total keluar (terjual)
     stockMap[key].out += Number(t.qty);
   });
 
-  // TAHAP AKHIR: Hitung sisa stok, LALU sembunyikan yang masuk kotak arsip
+  // TAHAP AKHIR: Hitung sisa riil, sembunyikan yang diarsip
   const currentStocks = Object.values(stockMap)
-    .filter(item => item.isArchived === false) // <-- Ini kunci rahasianya: Sembunyikan dari layar!
+    .filter(item => item.isArchived === false)
     .map(item => ({
       name: item.displayName,
-      qty: item.in - item.out // Matematikanya tetap normal tidak minus
+      qty: item.in - item.out // Konsolidasi global: Total Masuk - Total Keluar
     }));
 
   // --- LOGIKA KEUANGAN ---
