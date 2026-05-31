@@ -641,6 +641,27 @@ export default function TransactionsPage() {
     }
   };
 
+  // FUNGSI DOWNLOAD STRUK THERMAL (VERSI GAMBAR PNG)
+  const handleDownloadThermalReceipt = async () => {
+    const node = document.getElementById('thermal-receipt-template');
+    if (!node) return;
+
+    setLoading(true);
+    const idToast = toast.loading('Sedang menyiapkan gambar struk thermal...');
+    try {
+      await htmlToImage.toPng(node, { cacheBust: true }); 
+      const dataUrl = await htmlToImage.toPng(node, { quality: 1, pixelRatio: 3, cacheBust: true });
+      
+      setGeneratedImage(dataUrl); // Ganti gambar di layar dengan versi thermal
+      toast.success('Gambar struk thermal siap disimpan!', { id: idToast });
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal membuat gambar struk thermal', { id: idToast });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // FUNGSI BUKA MODAL RESI
   const handleOpenResi = (group: any) => {
       setCurrentResi(group);
@@ -1424,54 +1445,118 @@ export default function TransactionsPage() {
               </div>
               
             </div>
+            {/* ========================================================= */}
+        {/* TEMPLATE STRUK THERMAL 80mm (TERSEMBUNYI UNTUK GENERATE PNG) */}
+        {/* ========================================================= */}
+        <div id="thermal-receipt-template" className="bg-white text-black p-3" style={{ width: '302px', fontFamily: "monospace", fontSize: "11px", lineHeight: "1.2" }}>
+            <div className="text-center font-black text-sm mb-1 uppercase tracking-wider">Pempek Umiwa</div>
+            <div className="text-center text-[10px] mb-2 border-b border-black border-dashed pb-2">
+                Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan<br/>
+                0877-8847-2837
+            </div>
+            
+            <div className="flex justify-between font-bold mb-1 text-[10px]">
+                <span>{new Date(currentReceipt?.key || currentReceipt?.items?.[0]?.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: '2-digit', year: 'numeric'})}</span>
+                <span>{new Date(currentReceipt?.key || currentReceipt?.items?.[0]?.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}</span>
+            </div>
+            <div className="font-bold mb-2 pb-1 border-b border-black border-dashed uppercase text-[10px]">
+                Pelanggan: {currentReceipt?.customer_name || currentReceipt?.items?.[0]?.customer_name || 'Hamba Allah'}
+            </div>
+
+            <div className="mb-2 space-y-1.5">
+                {currentReceipt?.items?.map((t: any, i: number) => (
+                    <div key={i} className="flex flex-col">
+                        <span className="font-bold uppercase break-words">
+                            {t.product_name.split(' | ')[0]} 
+                            {t.product_name.includes(' | ') && ` (${t.product_name.split(' | ')[1]})`}
+                        </span>
+                        <div className="flex justify-between items-end mt-0.5">
+                            <span>{t.qty}x @{new Intl.NumberFormat('id-ID').format(t.selling_price)}</span>
+                            <span className="font-bold">{new Intl.NumberFormat('id-ID').format(t.qty * t.selling_price)}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="border-t border-black border-dashed pt-1 mt-1 space-y-1">
+                <div className="flex justify-between font-bold">
+                    <span>Subtotal</span>
+                    <span>{new Intl.NumberFormat('id-ID').format((currentReceipt?.total || 0) - (currentReceipt?.ongkir || 0) - (currentReceipt?.packing_fee || 0))}</span>
+                </div>
+                {currentReceipt?.ongkir > 0 && (
+                    <div className="flex justify-between font-bold">
+                        <span>Ongkir</span>
+                        <span>{new Intl.NumberFormat('id-ID').format(currentReceipt.ongkir)}</span>
+                    </div>
+                )}
+                {currentReceipt?.packing_fee > 0 && (
+                    <div className="flex justify-between font-bold">
+                        <span>Packing</span>
+                        <span>{new Intl.NumberFormat('id-ID').format(currentReceipt.packing_fee)}</span>
+                    </div>
+                )}
+                <div className="flex justify-between font-black text-[12px] pt-1 mt-1 border-t border-black">
+                    <span>TOTAL</span>
+                    <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(currentReceipt?.total || 0)}</span>
+                </div>
+            </div>
+
+            <div className="text-center mt-3 pt-2 border-t border-black border-dashed font-bold">
+                Terima Kasih<br/>
+                Telah Berbelanja
+            </div>
+        </div>
         </div>
 
         {/* ========================================================= */}
         {/* MODAL PREVIEW GAMBAR STRUK (TAMPIL FULL SCREEN DI HP/WEB) */}
         {/* ========================================================= */}
         {showImageModal && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/95 p-5 animate-in fade-in duration-300">
-            <div className="relative w-full max-w-sm flex flex-col items-center">
-
-              {/* Tombol Silang Buat Tutup (Pojok Kanan Atas) */}
-              <button
-                onClick={() => setShowImageModal(false)}
-                className="absolute -top-12 right-0 bg-white/20 text-white p-2.5 rounded-full hover:bg-white/40 transition-colors active:scale-90"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              {/* Hasil Gambar Struknya */}
-              <div className="bg-white p-2 rounded-[24px] shadow-[0_0_40px_rgba(0,0,0,0.5)] mb-6 w-full flex justify-center border border-slate-200/20">
-                <img
-                  src={generatedImage}
-                  alt="Struk Pempek Umiwa"
-                  className="max-h-[60vh] w-auto rounded-[16px] object-contain"
-                />
-              </div>
-
-              {/* Teks Arahan Untuk User & Tombol Tutup Bawah */}
-              <div className="text-center w-full space-y-3">
+          // 1. Tambahkan overflow-y-auto agar layar bisa di-scroll ke bawah
+          <div className="fixed inset-0 z-[120] bg-black/95 p-4 overflow-y-auto animate-in fade-in duration-300">
+            
+            {/* 2. Pembungkus ini memastikan posisi di tengah, TAPI mengizinkan scroll jika konten terlalu panjang */}
+            <div className="min-h-full flex items-center justify-center py-16">
                 
-                {/* TOMBOL TUTUP MERAH (Di Atas) */}
-                <button 
-                   onClick={() => setShowImageModal(false)}
-                   className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-rose-500"
+              <div className="relative w-full max-w-sm flex flex-col items-center">
+
+                {/* Tombol Silang Buat Tutup (Pojok Kanan Atas) */}
+                <button
+                  onClick={() => setShowImageModal(false)}
+                  className="absolute -top-12 right-0 bg-white/20 text-white p-2.5 rounded-full hover:bg-white/40 transition-colors active:scale-90"
                 >
-                   <X className="w-5 h-5 mr-2" /> TUTUP GAMBAR
+                  <X className="w-5 h-5" />
                 </button>
 
-                {/* 🖨️ TOMBOL BUKA PREVIEW THERMAL (Di Bawah) */}
-                <button 
-                   onClick={() => {
-                     setShowImageModal(false);     // Tutup gambar biru
-                     setShowThermalModal(true);    // Buka gambar thermal 80mm
-                   }}
-                   className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-slate-700"
-                >
-                   <Printer className="w-5 h-5 mr-2" /> PREVIEW STRUK THERMAL (80mm)
-                </button>
+                {/* Hasil Gambar Struknya */}
+                <div className="bg-white p-2 rounded-[24px] shadow-[0_0_40px_rgba(0,0,0,0.5)] mb-6 w-full flex justify-center border border-slate-200/20">
+                  <img
+                    src={generatedImage}
+                    alt="Struk Pempek Umiwa"
+                    className="max-h-[60vh] w-auto rounded-[16px] object-contain"
+                  />
+                </div>
 
+                {/* Teks Arahan Untuk User & Tombol Tutup Bawah */}
+                <div className="text-center w-full space-y-3">
+                  
+                  {/* TOMBOL TUTUP MERAH (Di Atas) */}
+                  <button 
+                     onClick={() => setShowImageModal(false)}
+                     className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-rose-500"
+                  >
+                     <X className="w-5 h-5 mr-2" /> TUTUP GAMBAR
+                  </button>
+
+                  {/* 🖨️ TOMBOL BUAT GAMBAR THERMAL (Di Bawah) */}
+                  <button 
+                     onClick={() => handleDownloadThermalReceipt()}
+                     className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-slate-700"
+                  >
+                     <Printer className="w-5 h-5 mr-2" /> BUAT VERSI THERMAL (GAMBAR)
+                  </button>
+
+                </div>
               </div>
             </div>
           </div>
