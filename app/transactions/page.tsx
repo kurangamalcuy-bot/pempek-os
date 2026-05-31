@@ -14,6 +14,7 @@ export default function TransactionsPage() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showThermalModal, setShowThermalModal] = useState(false); // <--- INI TAMBAHANNYA
   const [generatedImage, setGeneratedImage] = useState('');
 
   // --- STATE UNTUK MODAL STRUK PNG ---
@@ -1450,14 +1451,27 @@ export default function TransactionsPage() {
               </div>
 
               {/* Teks Arahan Untuk User & Tombol Tutup Bawah */}
-              <div className="text-center w-full space-y-3">                
-                {/* TOMBOL TUTUP MERAH BESAR DI BAWAH GAMBAR */}
+              <div className="text-center w-full space-y-3">
+                
+                {/* TOMBOL TUTUP MERAH (Di Atas) */}
                 <button 
                    onClick={() => setShowImageModal(false)}
                    className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-rose-500"
                 >
                    <X className="w-5 h-5 mr-2" /> TUTUP GAMBAR
                 </button>
+
+                {/* 🖨️ TOMBOL BUKA PREVIEW THERMAL (Di Bawah) */}
+                <button 
+                   onClick={() => {
+                     setShowImageModal(false);     // Tutup gambar biru
+                     setShowThermalModal(true);    // Buka gambar thermal 80mm
+                   }}
+                   className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center border border-slate-700"
+                >
+                   <Printer className="w-5 h-5 mr-2" /> PREVIEW STRUK THERMAL (80mm)
+                </button>
+
               </div>
             </div>
           </div>
@@ -1696,6 +1710,107 @@ export default function TransactionsPage() {
                 </div>
 
               </div>
+            </div>
+          </div>
+        )}
+        {/* ========================================================= */}
+        {/* MODAL PREVIEW STRUK THERMAL 80mm */}
+        {/* ========================================================= */}
+        {showThermalModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-in fade-in duration-300 print:bg-transparent print:p-0 print:backdrop-blur-none">
+            
+            {/* CSS Khusus Printer (Menyembunyikan latar belakang saat diprint) */}
+            <style>
+              {`
+                @media print {
+                  @page { margin: 0; size: 80mm auto; }
+                  body * { visibility: hidden !important; }
+                  #area-print-thermal, #area-print-thermal * { visibility: visible !important; }
+                  #area-print-thermal { 
+                    position: absolute !important; 
+                    left: 0 !important; 
+                    top: 0 !important; 
+                    width: 80mm !important; 
+                    max-height: none !important; 
+                    overflow: visible !important;
+                    padding: 2mm !important;
+                  }
+                }
+              `}
+            </style>
+
+            <div className="flex flex-col items-center w-full max-w-[80mm] max-h-screen">
+                
+                {/* Visual Kertas Struk 80mm di Layar */}
+                <div id="area-print-thermal" className="bg-white text-black w-[80mm] p-3 overflow-y-auto scrollbar-hide shadow-2xl rounded-sm" style={{ fontFamily: "monospace", fontSize: "11px", lineHeight: "1.2" }}>
+                    <div className="text-center font-black text-sm mb-1 uppercase tracking-wider">Pempek Umiwa</div>
+                    <div className="text-center text-[10px] mb-2 border-b border-black border-dashed pb-2">
+                        Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan<br/>
+                        0877-8847-2837
+                    </div>
+                    
+                    <div className="flex justify-between font-bold mb-1 text-[10px]">
+                        <span>{new Date(currentReceipt?.key || currentReceipt?.items[0]?.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: '2-digit', year: 'numeric'})}</span>
+                        <span>{new Date(currentReceipt?.key || currentReceipt?.items[0]?.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}</span>
+                    </div>
+                    <div className="font-bold mb-2 pb-1 border-b border-black border-dashed uppercase text-[10px]">
+                        Pelanggan: {currentReceipt?.customer_name || currentReceipt?.items[0]?.customer_name || 'Hamba Allah'}
+                    </div>
+
+                    <div className="mb-2 space-y-1.5">
+                        {currentReceipt?.items.map((t: any, i: number) => (
+                            <div key={i} className="flex flex-col">
+                                <span className="font-bold uppercase break-words">
+                                    {t.product_name.split(' | ')[0]} 
+                                    {t.product_name.includes(' | ') && ` (${t.product_name.split(' | ')[1]})`}
+                                </span>
+                                <div className="flex justify-between items-end mt-0.5">
+                                    <span>{t.qty}x @{new Intl.NumberFormat('id-ID').format(t.selling_price)}</span>
+                                    <span className="font-bold">{new Intl.NumberFormat('id-ID').format(t.qty * t.selling_price)}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="border-t border-black border-dashed pt-1 mt-1 space-y-1">
+                        <div className="flex justify-between font-bold">
+                            <span>Subtotal</span>
+                            <span>{new Intl.NumberFormat('id-ID').format((currentReceipt?.total || 0) - (currentReceipt?.ongkir || 0) - (currentReceipt?.packing_fee || 0))}</span>
+                        </div>
+                        {currentReceipt?.ongkir > 0 && (
+                            <div className="flex justify-between font-bold">
+                                <span>Ongkir</span>
+                                <span>{new Intl.NumberFormat('id-ID').format(currentReceipt.ongkir)}</span>
+                            </div>
+                        )}
+                        {currentReceipt?.packing_fee > 0 && (
+                            <div className="flex justify-between font-bold">
+                                <span>Packing</span>
+                                <span>{new Intl.NumberFormat('id-ID').format(currentReceipt.packing_fee)}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between font-black text-[12px] pt-1 mt-1 border-t border-black">
+                            <span>TOTAL</span>
+                            <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(currentReceipt?.total || 0)}</span>
+                        </div>
+                    </div>
+
+                    <div className="text-center mt-3 pt-2 border-t border-black border-dashed font-bold">
+                        Terima Kasih<br/>
+                        Telah Berbelanja
+                    </div>
+                </div>
+
+                {/* Tombol Aksi di Bawah Struk (Otomatis hilang saat diprint ke kertas) */}
+                <div className="w-[80mm] mt-4 space-y-2 print:hidden">
+                    <button onClick={() => window.print()} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3.5 rounded-xl flex items-center justify-center transition-all active:scale-95 shadow-lg">
+                        <Printer className="w-5 h-5 mr-2" /> PRINT SEKARANG
+                    </button>
+                    <button onClick={() => setShowThermalModal(false)} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-black py-3.5 rounded-xl flex items-center justify-center transition-all active:scale-95">
+                        KEMBALI
+                    </button>
+                </div>
+
             </div>
           </div>
         )}
