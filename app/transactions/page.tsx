@@ -363,10 +363,10 @@ export default function TransactionsPage() {
                 const representativeBatch = batches.find(b => b.id === item.batchId);
                 const targetProductName = (representativeBatch?.product_name || '').trim().toLowerCase();
 
-                // Kumpulkan semua kardus untuk produk ini, urutkan dari yang PALING TUA (FIFO)
+                // Kumpulkan semua kardus untuk produk ini, urutkan dari yang PALING BARU (LIFO)
                 const productBatches = batches
                     .filter(b => b.status !== 'Rusak/Basi' && (b.product_name || '').trim().toLowerCase() === targetProductName)
-                    .sort((a, b) => new Date(a.arrival_date).getTime() - new Date(b.arrival_date).getTime());
+                    .sort((a, b) => new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime());
 
                 let qtyNeeded = Number(item.qty);
 

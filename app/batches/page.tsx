@@ -39,9 +39,11 @@ export default function BatchesPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // Jinakkan Bom 4: Filter langsung dari level Database server (Supabase)
+    // PERBAIKAN: Deteksi otomatis tanggal terakhir di bulan yang dipilih (28/29/30/31)
+    const lastDay = new Date(filterYear, filterMonth, 0).getDate();
+    
     const startOfMonth = `${filterYear}-${String(filterMonth).padStart(2, '0')}-01`;
-    const endOfMonth = `${filterYear}-${String(filterMonth).padStart(2, '0')}-31`; // Supabase toleran dengan tgl 31
+    const endOfMonth = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${lastDay}`; 
 
     // 1. Ambil data batches berdasarkan filter bulan tiba
     const { data: batchesData, error: batchesError } = await supabase
@@ -58,6 +60,7 @@ export default function BatchesPage() {
 
     if (batchesError || trxError) {
       toast.error('Gagal mengambil data dari server');
+      console.error("Error DB:", batchesError || trxError); // Membantu lacak error di console
     } else {
       setBatches(batchesData || []);
       setTransactions(trxData || []);
