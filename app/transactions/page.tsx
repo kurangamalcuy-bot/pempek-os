@@ -1624,7 +1624,7 @@ export default function TransactionsPage() {
                         <select value={resiForm.courier} onChange={e => setResiForm({...resiForm, courier: e.target.value, customCourier: ''})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none mb-2">
                             <option value="AHSAN XPRESS">Ahsan Xpress</option>
                             <option value="PAXEL">Paxel</option>
-                            <option value="GOSEND">GoSend</option>
+                            <option value="GOSEND">Gosend/Shopee Instant</option>
                             <option value="KURIR UMIWA">Kurir Pempek Umiwa</option>
                             <option value="MANUAL">Lainnya (Manual)</option>
                         </select>
