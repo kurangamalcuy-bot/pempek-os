@@ -1451,10 +1451,8 @@ export default function TransactionsPage() {
         <div id="thermal-receipt-template" className="bg-white text-black p-3" style={{ width: '302px', fontFamily: "monospace", fontSize: "11px", lineHeight: "1.2" }}>
             <div className="text-center font-black text-sm mb-1 uppercase tracking-wider">Pempek Umiwa</div>
             <div className="text-center text-[10px] mb-2 border-b border-black border-dashed pb-2">
-                Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan<br/>
-                0877-8847-2837
+                Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan (0877-8847-2837)
             </div>
-            
             <div className="flex justify-between font-bold mb-1 text-[10px]">
                 <span>{new Date(currentReceipt?.key || currentReceipt?.items?.[0]?.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: '2-digit', year: 'numeric'})}</span>
                 <span>{new Date(currentReceipt?.key || currentReceipt?.items?.[0]?.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}</span>
@@ -1499,11 +1497,6 @@ export default function TransactionsPage() {
                     <span>TOTAL</span>
                     <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(currentReceipt?.total || 0)}</span>
                 </div>
-            </div>
-
-            <div className="text-center mt-3 pt-2 border-t border-black border-dashed font-bold">
-                Terima Kasih<br/>
-                Telah Berbelanja
             </div>
         </div>
         </div>
@@ -1830,10 +1823,8 @@ export default function TransactionsPage() {
                 <div id="area-print-thermal" className="bg-white text-black w-[80mm] p-3 overflow-y-auto scrollbar-hide shadow-2xl rounded-sm" style={{ fontFamily: "monospace", fontSize: "11px", lineHeight: "1.2" }}>
                     <div className="text-center font-black text-sm mb-1 uppercase tracking-wider">Pempek Umiwa</div>
                     <div className="text-center text-[10px] mb-2 border-b border-black border-dashed pb-2">
-                        Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan<br/>
-                        0877-8847-2837
+                        Jl Warga Bakti No.18, RT.02/RW.11<br/>Cimahi Selatan (0877-8847-2837)
                     </div>
-                    
                     <div className="flex justify-between font-bold mb-1 text-[10px]">
                         <span>{new Date(currentReceipt?.key || currentReceipt?.items[0]?.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: '2-digit', year: 'numeric'})}</span>
                         <span>{new Date(currentReceipt?.key || currentReceipt?.items[0]?.created_at).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}</span>
@@ -1878,11 +1869,6 @@ export default function TransactionsPage() {
                             <span>TOTAL</span>
                             <span>{new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(currentReceipt?.total || 0)}</span>
                         </div>
-                    </div>
-
-                    <div className="text-center mt-3 pt-2 border-t border-black border-dashed font-bold">
-                        Terima Kasih<br/>
-                        Telah Berbelanja
                     </div>
                 </div>
 
