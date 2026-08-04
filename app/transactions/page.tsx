@@ -826,9 +826,13 @@ export default function TransactionsPage() {
 
                     if (isBukanCuko) {
                         if (rawBatchName.includes("tekwan")) {
-                            // Tekwan memunculkan 2 tombol pilihan
+                            // Tekwan (Rp 36rb) memunculkan 6 tombol pilihan ke semua varian
                             swapOptions.push({ target: "besar", qtyMultiplier: 1, priceDivider: 1, priceAdder: 4000, btnText: "Tukar ke Pempek Besar 10 (+Rp 4rb)" });
                             swapOptions.push({ target: "isi 20", qtyMultiplier: 1, priceDivider: 1, priceAdder: 4000, btnText: "Tukar ke Pempek Isi 20 (+Rp 4rb)" });
+                            swapOptions.push({ target: "isi 15", qtyMultiplier: 1, priceDivider: 1, priceAdder: -3000, btnText: "Tukar ke Pempek Isi 15 (-Rp 3rb)" });
+                            swapOptions.push({ target: "selam", qtyMultiplier: 1, priceDivider: 1, priceAdder: -5000, btnText: "Tukar ke Kapal Selam (-Rp 5rb)" });
+                            swapOptions.push({ target: "isi 10 biasa", qtyMultiplier: 1, priceDivider: 1, priceAdder: -13000, btnText: "Tukar ke Pempek Isi 10 (-Rp 13rb)" });
+                            swapOptions.push({ target: "adaan", qtyMultiplier: 1, priceDivider: 1, priceAdder: -13000, btnText: "Tukar ke Adaan+Kulit (-Rp 13rb)" });
                         } else if (rawBatchName.includes("besar") && rawBatchName.includes("10")) {
                             // Besar HANYA BISA ditukar ke Isi 20
                             swapOptions.push({ target: "isi 20", qtyMultiplier: 1, priceDivider: 1, priceAdder: 0, btnText: "Tukar ke Pempek Isi 20" });
@@ -853,6 +857,8 @@ export default function TransactionsPage() {
                             if (option.target === "besar") return bn.includes("besar") && bn.includes("10");
                             if (option.target === "tekwan") return bn.includes("tekwan");
                             if (option.target === "isi 20") return bn.includes("20");
+                            if (option.target === "isi 15") return bn.includes("15");
+                            if (option.target === "selam") return bn.includes("selam");
                             return false;
                         });
 
