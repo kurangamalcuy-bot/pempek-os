@@ -118,32 +118,32 @@ export default function TransactionsPage() {
     if (trxRes.data) setTransactions(trxRes.data);
   };
 
-  // --- KONFIGURASI PAKET BUNDLING (HARGA KHUSUS) ---
+  // --- KONFIGURASI PAKET BUNDLING (HARGA KHUSUS TERBARU) ---
   const BUNDLES = [
     {
       name: "Paket Cicip (2 packs)",
       items: [
-        { productName: "Pempek Isi 10 pcs", qty: 1, bundlePricePerPack: 18000 },
-        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 26000 }
-      ]
+        { productName: "Pempek Isi 10 pcs", qty: 1, bundlePricePerPack: 20000 },
+        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 30000 }
+      ] // Total: 50.000
     },
     {
       name: "Paket Keluarga (3 packs)",
       items: [
-        { productName: "Pempek isi 20 pcs", qty: 1, bundlePricePerPack: 31000 }, 
-        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 17000 }, 
-        { productName: "Tekwan", qty: 1, bundlePricePerPack: 32000 }
-      ]
+        { productName: "Pempek isi 20 pcs", qty: 1, bundlePricePerPack: 38000 }, 
+        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 20000 }, 
+        { productName: "Tekwan", qty: 1, bundlePricePerPack: 31000 }
+      ] // Total: 89.000
     },
     {
       name: "Paket Istimewa (5 packs)",
       items: [
-        { productName: "Pempek Isi 20 pcs", qty: 1, bundlePricePerPack: 32000 },
-        { productName: "Pempek Besar isi 10 pcs", qty: 1, bundlePricePerPack: 32000 },
+        { productName: "Pempek Isi 20 pcs", qty: 1, bundlePricePerPack: 38000 },
+        { productName: "Pempek Besar isi 10 pcs", qty: 1, bundlePricePerPack: 38000 },
         { productName: "Tekwan", qty: 1, bundlePricePerPack: 32000 },
-        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 17000 },
-        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 26000 } 
-      ]
+        { productName: "Adaan+Kulit isi 12 pcs ", qty: 1, bundlePricePerPack: 20000 },
+        { productName: "Pempek Kapal Selam isi Telur", qty: 1, bundlePricePerPack: 28000 } 
+      ] // Total: 156.000
     }
   ];
 
@@ -820,49 +820,52 @@ export default function TransactionsPage() {
                     const bgColor = isHabis ? 'bg-rose-100/60' : isQtyInvalid ? 'bg-orange-50' : 'bg-white';
                     const borderColor = isHabis ? 'border-rose-300' : isQtyInvalid ? 'border-orange-300' : 'border-slate-200';
 
-                    // LOGIKA ATURAN TUKAR PRODUK (SWAP)
-                    let swapTargetRule = "";
-                    let swapQtyMultiplier = 1;
-                    let swapPriceDivider = 1;
-                    let swapBtnText = "";
+                    // LOGIKA ATURAN TUKAR PRODUK (SWAP) BISA MULTI TOMBOL
+                    let swapOptions: any[] = [];
+                    const isBukanCuko = !rawBatchName.includes("cuko");
 
-                    if (rawBatchName.includes("20")) {
-                        swapTargetRule = "isi 10 biasa";
-                        swapQtyMultiplier = 2; // Diganti jadi 2 bungkus
-                        swapPriceDivider = 2;  // Harga dibagi 2
-                        swapBtnText = "Tukar ke 2x Pempek Isi 10";
-                    } else if (rawBatchName.includes("tekwan")) {
-                        swapTargetRule = "besar";
-                        swapBtnText = "Tukar ke Pempek Besar 10";
-                    } else if (rawBatchName.includes("besar") && rawBatchName.includes("10")) {
-                        swapTargetRule = "tekwan";
-                        swapBtnText = "Tukar ke Tekwan";
-                    } else if (rawBatchName.includes("adaan") || rawBatchName.includes("kulit")) {
-                        swapTargetRule = "isi 10 biasa";
-                        swapBtnText = "Tukar ke Pempek Isi 10";
-                    } else if (rawBatchName.includes("10") && !rawBatchName.includes("besar") && !rawBatchName.includes("selam")) {
-                        swapTargetRule = "adaan";
-                        swapBtnText = "Tukar ke Adaan+Kulit 12";
+                    if (isBukanCuko) {
+                        if (rawBatchName.includes("tekwan")) {
+                            // Tekwan memunculkan 2 tombol pilihan
+                            swapOptions.push({ target: "besar", qtyMultiplier: 1, priceDivider: 1, priceAdder: 4000, btnText: "Tukar ke Pempek Besar 10 (+Rp 4rb)" });
+                            swapOptions.push({ target: "isi 20", qtyMultiplier: 1, priceDivider: 1, priceAdder: 4000, btnText: "Tukar ke Pempek Isi 20 (+Rp 4rb)" });
+                        } else if (rawBatchName.includes("besar") && rawBatchName.includes("10")) {
+                            // Besar HANYA BISA ditukar ke Isi 20
+                            swapOptions.push({ target: "isi 20", qtyMultiplier: 1, priceDivider: 1, priceAdder: 0, btnText: "Tukar ke Pempek Isi 20" });
+                        } else if (rawBatchName.includes("20")) {
+                            // Isi 20 HANYA BISA ditukar ke Besar
+                            swapOptions.push({ target: "besar", qtyMultiplier: 1, priceDivider: 1, priceAdder: 0, btnText: "Tukar ke Pempek Besar 10" });
+                        } else if (rawBatchName.includes("adaan") || rawBatchName.includes("kulit")) {
+                            // Adaan <-> Isi 10 Tetap berjalan normal
+                            swapOptions.push({ target: "isi 10 biasa", qtyMultiplier: 1, priceDivider: 1, priceAdder: 0, btnText: "Tukar ke Pempek Isi 10" });
+                        } else if (rawBatchName.includes("10") && !rawBatchName.includes("besar") && !rawBatchName.includes("selam")) {
+                            // Isi 10 <-> Adaan Tetap berjalan normal
+                            swapOptions.push({ target: "adaan", qtyMultiplier: 1, priceDivider: 1, priceAdder: 0, btnText: "Tukar ke Adaan+Kulit 12" });
+                        }
                     }
 
-                    // EKSEKUSI PENUKARAN PRODUK
-                    const handleExecuteSwap = () => {
+                    // EKSEKUSI PENUKARAN PRODUK (MENDUKUNG MULTI OPSI)
+                    const handleExecuteSwap = (option: any) => {
                         const targetBatch = availableBatches.find(b => {
                             const bn = b.product_name.toLowerCase();
-                            if (swapTargetRule === "isi 10 biasa") return bn.includes("10") && !bn.includes("besar") && !bn.includes("selam");
-                            if (swapTargetRule === "adaan") return bn.includes("adaan") || bn.includes("kulit");
-                            if (swapTargetRule === "besar") return bn.includes("besar") && bn.includes("10");
-                            if (swapTargetRule === "tekwan") return bn.includes("tekwan");
+                            if (option.target === "isi 10 biasa") return bn.includes("10") && !bn.includes("besar") && !bn.includes("selam");
+                            if (option.target === "adaan") return bn.includes("adaan") || bn.includes("kulit");
+                            if (option.target === "besar") return bn.includes("besar") && bn.includes("10");
+                            if (option.target === "tekwan") return bn.includes("tekwan");
+                            if (option.target === "isi 20") return bn.includes("20");
                             return false;
                         });
 
                         if (!targetBatch) return toast.error("Produk pengganti tidak ditemukan di database.");
                         if (targetBatch.stock <= 0) return toast.error(`Stok ${targetBatch.product_name} juga sedang habis!`);
 
-                        const newQty = String(Number(item.qty || 1) * swapQtyMultiplier);
-                        const newPrice = item.priceOption === 'custom' && item.customPrice 
-                            ? String(Number(item.customPrice) / swapPriceDivider) 
-                            : item.customPrice;
+                        const newQty = String(Number(item.qty || 1) * option.qtyMultiplier);
+                        
+                        let newPrice = item.customPrice;
+                        if (item.priceOption === 'custom' && item.customPrice) {
+                            const calculatedPrice = (Number(item.customPrice) / option.priceDivider) + option.priceAdder;
+                            newPrice = String(calculatedPrice);
+                        }
 
                         swapItemVariant(item.id, targetBatch.id, newQty, newPrice);
                     };
@@ -898,32 +901,28 @@ export default function TransactionsPage() {
                                         <option 
                                             key={b.id} 
                                             value={b.id} 
-                                            disabled={b.stock <= 0} // GABISA DIKLIK JIKA STOK 0 ATAU MINUS
+                                            disabled={b.stock <= 0}
                                         >
                                             {b.product_name} {b.stock <= 0 ? '- HABIS' : `(Sisa: ${b.stock})`}
                                         </option>
                                     ))}
                                 </select>
-                                {/* Ikon Panah Dropdown Kustom */}
                                 <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
                                     <div className={`w-2.5 h-2.5 border-b-2 border-r-2 transform rotate-45 ${item.batchId ? 'border-emerald-600' : 'border-slate-400'}`}></div>
                                 </div>
                             </div>
 
-                            {/* Qty & Harga Ops (Muncul jika produk dipilih) */}
+                            {/* Qty & Harga Ops */}
                             {item.batchId && (
                                 <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                                    {/* Minimalist Stepper */}
                                     <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl h-11 w-28 shrink-0 p-1">
                                         <button type="button" onClick={() => updateItem(item.id, 'qty', String(Math.max(1, Number(item.qty || 0) - 1)))} className="w-8 h-full flex justify-center items-center text-slate-400 hover:text-slate-800 font-black text-lg active:scale-90">-</button>
                                         <input type="text" inputMode="numeric" value={item.qty} onChange={(e) => updateItem(item.id, 'qty', e.target.value.replace(/[^0-9]/g, ''))} className={`flex-1 w-full text-center bg-transparent font-black text-sm outline-none ${isQtyInvalid ? 'text-rose-500' : 'text-slate-800'}`} />
                                         <button type="button" onClick={() => updateItem(item.id, 'qty', String(Math.min(currentStock, Number(item.qty || 0) + 1)))} className="w-8 h-full flex justify-center items-center text-slate-400 hover:text-slate-800 font-black text-lg active:scale-90">+</button>
                                     </div>
 
-                                    {/* Segmented Control untuk Harga */}
                                     <div className="flex-1 flex gap-1 bg-slate-50 p-1 rounded-xl overflow-x-auto scrollbar-hide border border-slate-200">
                                         {['normal', 'reseller', 'online', 'custom'].map((opt) => {
-                                            // Sembunyikan jika harga 0 (kecuali normal & custom)
                                             if (opt === 'reseller' && !(selectedBatch?.price_reseller > 0)) return null;
                                             if (opt === 'online' && !(selectedBatch?.price_online > 0)) return null;
                                             
@@ -957,16 +956,19 @@ export default function TransactionsPage() {
                                 </p>
                             )}
 
-                            {/* 2. TOMBOL HITAM AUTO-SWAP: SEKARANG SELALU MUNCUL TANPA MENUNGGU STOK 0 */}
-                            {swapBtnText && (
-                                <div className="mt-2 animate-in zoom-in-95">
-                                    <button 
-                                        type="button" 
-                                        onClick={handleExecuteSwap}
-                                        className="w-full bg-slate-900 text-white font-black text-[11px] p-3 rounded-xl hover:bg-slate-800 transition active:scale-95 shadow-md flex items-center justify-center"
-                                    >
-                                         🔁 {swapBtnText}
-                                    </button>
+                            {/* 2. TOMBOL HITAM AUTO-SWAP MULTI OPSI */}
+                            {swapOptions.length > 0 && (
+                                <div className="mt-3 space-y-2 animate-in zoom-in-95">
+                                    {swapOptions.map((opt, idx) => (
+                                        <button 
+                                            key={idx}
+                                            type="button" 
+                                            onClick={() => handleExecuteSwap(opt)}
+                                            className="w-full bg-slate-900 text-white font-black text-[11px] p-3 rounded-xl hover:bg-slate-800 transition active:scale-95 shadow-md flex items-center justify-center"
+                                        >
+                                            🔁 {opt.btnText}
+                                        </button>
+                                    ))}
                                 </div>
                             )}
 
@@ -1293,7 +1295,7 @@ export default function TransactionsPage() {
                                             onClick={() => handleDeleteGroup(group.items)}
                                             className="flex items-center text-[9px] font-black bg-rose-50 text-rose-600 px-2.5 py-1.5 rounded-lg shadow-sm active:scale-95 hover:bg-rose-100 transition border border-rose-100"
                                         >
-                                            <Trash2 className="w-3 h-3 mr-1" /> HAPUS SEMUA
+                                            <Trash2 className="w-3 h-3 mr-1" /> HAPUS TRANSAKSI INI
                                         </button>
                                     </div>
                                 </div>
@@ -1396,16 +1398,42 @@ export default function TransactionsPage() {
               <div className="mb-6">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-3">Pesanan</p>
                 <div className="space-y-4">
-                  {currentReceipt?.items.map((t: any, i: number) => (
-                    <div key={i} className="flex justify-between items-start">
-                      <div className="max-w-[240px]">
-                        {t.product_name.includes(' | ') && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-0.5">{t.product_name.split(' | ')[1]}</p>}
-                        <p className="text-[13px] font-black text-slate-800 leading-snug">{t.product_name.split(' | ')[0]}</p>
-                        <p className="text-[11px] font-bold text-slate-500 mt-0.5">{t.qty} x {formatIDR(t.selling_price)}</p>
-                      </div>
-                      <p className="text-sm font-black text-slate-800 mt-0.5">{formatIDR(t.qty * t.selling_price)}</p>
-                    </div>
-                  ))}
+                  {/* LOGIKA PENGGABUNGAN STRUK BUNDLING */}
+                  {(() => {
+                      const displayItems: any[] = [];
+                      const bundlesMap: any = {};
+                      
+                      currentReceipt?.items?.forEach((t: any) => {
+                          const parts = t.product_name.split(' | ');
+                          const baseName = parts[0];
+                          const bundleLabel = parts[1]; // Misal: "Paket Istimewa"
+
+                          if (bundleLabel) {
+                              // Jika barang paketan, gabungkan harganya jadi satu
+                              if (!bundlesMap[bundleLabel]) bundlesMap[bundleLabel] = { name: bundleLabel, qty: t.qty, total: 0 };
+                              bundlesMap[bundleLabel].total += (t.qty * t.selling_price);
+                              bundlesMap[bundleLabel].qty = t.qty;
+                          } else {
+                              // Jika barang eceran/satuan, tampilkan biasa
+                              displayItems.push({ name: baseName, qty: t.qty, price: t.selling_price, total: t.qty * t.selling_price });
+                          }
+                      });
+                      
+                      // Masukkan paketan yang sudah digabung ke list struk
+                      Object.values(bundlesMap).forEach((b: any) => {
+                          displayItems.push({ name: b.name, qty: b.qty, price: b.total / b.qty, total: b.total });
+                      });
+
+                      return displayItems.map((item, i) => (
+                        <div key={i} className="flex justify-between items-start">
+                          <div className="max-w-[240px]">
+                            <p className="text-[13px] font-black text-slate-800 leading-snug uppercase">{item.name}</p>
+                            <p className="text-[11px] font-bold text-slate-500 mt-0.5">{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</p>
+                          </div>
+                          <p className="text-sm font-black text-slate-800 mt-0.5">{new Intl.NumberFormat('id-ID').format(item.total)}</p>
+                        </div>
+                      ));
+                  })()}
                 </div>
               </div>
 
@@ -1462,18 +1490,36 @@ export default function TransactionsPage() {
             </div>
 
             <div className="mb-2 space-y-1.5">
-                {currentReceipt?.items?.map((t: any, i: number) => (
-                    <div key={i} className="flex flex-col">
-                        <span className="font-bold uppercase break-words">
-                            {t.product_name.split(' | ')[0]} 
-                            {t.product_name.includes(' | ') && ` (${t.product_name.split(' | ')[1]})`}
-                        </span>
-                        <div className="flex justify-between items-end mt-0.5">
-                            <span>{t.qty}x @{new Intl.NumberFormat('id-ID').format(t.selling_price)}</span>
-                            <span className="font-bold">{new Intl.NumberFormat('id-ID').format(t.qty * t.selling_price)}</span>
-                        </div>
-                    </div>
-                ))}
+                {/* LOGIKA PENGGABUNGAN STRUK BUNDLING THERMAL */}
+                {(() => {
+                      const displayItems: any[] = [];
+                      const bundlesMap: any = {};
+                      
+                      currentReceipt?.items?.forEach((t: any) => {
+                          const parts = t.product_name.split(' | ');
+                          if (parts[1]) {
+                              if (!bundlesMap[parts[1]]) bundlesMap[parts[1]] = { name: parts[1], qty: t.qty, total: 0 };
+                              bundlesMap[parts[1]].total += (t.qty * t.selling_price);
+                              bundlesMap[parts[1]].qty = t.qty;
+                          } else {
+                              displayItems.push({ name: parts[0], qty: t.qty, price: t.selling_price, total: t.qty * t.selling_price });
+                          }
+                      });
+                      
+                      Object.values(bundlesMap).forEach((b: any) => {
+                          displayItems.push({ name: b.name, qty: b.qty, price: b.total / b.qty, total: b.total });
+                      });
+
+                      return displayItems.map((item, i) => (
+                          <div key={i} className="flex flex-col">
+                              <span className="font-bold uppercase break-words">{item.name}</span>
+                              <div className="flex justify-between items-end mt-0.5">
+                                  <span>{item.qty}x @{new Intl.NumberFormat('id-ID').format(item.price)}</span>
+                                  <span className="font-bold">{new Intl.NumberFormat('id-ID').format(item.total)}</span>
+                              </div>
+                          </div>
+                      ));
+                  })()}
             </div>
 
             <div className="border-t border-black border-dashed pt-1 mt-1 space-y-1">
